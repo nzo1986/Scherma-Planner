@@ -1,3 +1,4 @@
+```html
 <!DOCTYPE html>
 <html lang="it">
 <head>
@@ -144,7 +145,7 @@
                 </g>
             </svg>
             <div>
-                <h1 class="text-xl font-black tracking-tight" style="font-family: 'Bodoni MT', serif;">Scherma Planner <span class="text-blue-500 text-sm">V6.3</span></h1>
+                <h1 class="text-xl font-black tracking-tight" style="font-family: 'Bodoni MT', serif;">Scherma Planner <span class="text-blue-500 text-sm">V6.3.1</span></h1>
                 <div class="flex items-center gap-2">
                     <p class="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Tournament Manager</p>
                     <span id="save-status" class="text-[10px] text-green-600 font-bold hidden opacity-0 transition-opacity duration-300"><i class="fa-solid fa-cloud-arrow-up"></i> Salvato</span>
@@ -258,7 +259,7 @@
     </main>
 
     <!-- Global Drag Tooltip -->
-    <div id="drag-tooltip" class="hidden fixed z-[9999] bg-yellow-400 text-yellow-900 text-[10px] font-black px-2 py-1 rounded shadow-lg pointer-events-none transform -translate-x-1/2 -translate-y-full border border-yellow-600" style="transition: opacity 0.1s ease-in-out;"></div>
+    <div id="drag-tooltip" class="hidden fixed z-[9999] bg-yellow-400 text-yellow-900 text-[10px] font-black px-2 py-1 rounded shadow-lg pointer-events-none transform -translate-x-1/2 -translate-y-full border border-yellow-600" style="transition: none;"></div>
 
     <!-- Modals -->
     <div id="importChoiceModal" class="modal" style="z-index: 300;">
@@ -779,6 +780,188 @@
             return map;
         }
 
+        // --- TABS & SELECTION LOGIC ---
+        function renderTabs() {
+            const container = document.getElementById('day-tabs-container'); container.innerHTML = '';
+            database.forEach(day => {
+                const btn = document.createElement('button');
+                btn.className = `day-tab px-3 py-1.5 rounded-full text-[11px] font-black shadow-sm ${day.id === currentDayId ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`;
+                btn.innerHTML = `<i class="fa-regular fa-calendar-days mr-1"></i> ${day.title}`;
+                btn.onclick = () => changeDay(day.id);
+                btn.oncontextmenu = (e) => { e.preventDefault(); deleteDay(day.id); };
+                container.appendChild(btn);
+            });
+            const addBtn = document.createElement('button');
+            addBtn.className = 'day-tab px-2 py-1.5 rounded-full text-[11px] font-black bg-green-100 text-green-700 hover:bg-green-200 shadow-sm border border-green-300';
+            addBtn.innerHTML = '<i class="fa-solid fa-plus"></i>'; addBtn.onclick = () => document.getElementById('addDayModal').classList.add('active');
+            container.appendChild(addBtn);
+            
+            let currentDay = getCurrentDayData();
+            if(currentDay) {
+                if(document.getElementById('day-start-time')) document.getElementById('day-start-time').value = minsToTime(currentDay.startTime);
+                if(document.getElementById('max-pistes')) document.getElementById('max-pistes').value = currentDay.maxPistes;
+                if(document.getElementById('max-pistes-nv')) document.getElementById('max-pistes-nv').value = currentDay.maxPistesNV;
+                if(document.getElementById('max-pistes-car')) document.getElementById('max-pistes-car').value = currentDay.maxPistesCar;
+                
+                if(document.getElementById('ref-spada')) document.getElementById('ref-spada').value = currentDay.refs?.spada || 10;
+                if(document.getElementById('ref-fioretto')) document.getElementById('ref-fioretto').value = currentDay.refs?.fioretto || 10;
+                if(document.getElementById('ref-sciabola')) document.getElementById('ref-sciabola').value = currentDay.refs?.sciabola || 10;
+                if(document.getElementById('ref-nv')) document.getElementById('ref-nv').value = currentDay.refs?.nv || 2;
+                if(document.getElementById('ref-car')) document.getElementById('ref-car').value = currentDay.refs?.car || 2;
+            }
+        }
+
+        function toggleSelection(catId) {
+            let day = getCurrentDayData();
+            let cat = day.categories.find(c => c.id === catId);
+            if(cat) cat.selected = !cat.selected;
+            refreshCurrentView();
+        }
+
+        function updateBulkActions() {
+            let day = getCurrentDayData();
+            let selCount = day.categories.filter(c => c.selected).length;
+            document.getElementById('sel-count').innerText = selCount;
+            if(selCount > 0) document.getElementById('bulk-controls').classList.remove('hidden');
+            else document.getElementById('bulk-controls').classList.add('hidden');
+            
+            let btnPaste = document.getElementById('btn-paste-internal');
+            if(internalClipboard.length > 0) btnPaste.classList.remove('hidden');
+            else btnPaste.classList.add('hidden');
+        }
+
+        function copySelectedToClipboard() {
+            let day = getCurrentDayData();
+            let selected = day.categories.filter(c => c.selected);
+            if(selected.length === 0) return;
+            internalClipboard = JSON.parse(JSON.stringify(selected));
+            internalClipboard.forEach(c => { c.selected = false; });
+            customAlert(`${selected.length} categorie copiate. Cambia giornata e incolla.`);
+            updateBulkActions();
+        }
+
+        function pasteFromClipboard() {
+            if(internalClipboard.length === 0) return;
+            let day = getCurrentDayData();
+            saveState();
+            
+            let catsToAdd = JSON.parse(JSON.stringify(internalClipboard));
+            catsToAdd.forEach(cat => {
+                cat.id = generateId('cat');
+                let activePS = (cat.format === 'caf' || cat.format.includes('squadre')) ? cat.athletes : (cat.poolSize || 7);
+                cat.blocks = generateBlocks(cat.weapon, cat.format, cat.athletes, cat.passCount, activePS, day.startTime, cat.sector || 'olimpico');
+            });
+            
+            day.categories.push(...catsToAdd);
+            autoSchedule();
+            customAlert(`${catsToAdd.length} categorie incollate con successo.`);
+        }
+
+        function openBulkEditModal() { document.getElementById('bulkEditModal').classList.add('active'); }
+        
+        function applyBulkEdit() {
+            saveState();
+            let day = getCurrentDayData();
+            let selectedCats = day.categories.filter(c => c.selected);
+            
+            let bSector = document.getElementById('bulkSector').value;
+            let bWeapon = document.getElementById('bulkWeapon').value;
+            let bFormat = document.getElementById('bulkFormat').value;
+            let bPool = document.getElementById('bulkPoolSize').value;
+            let bPause = document.getElementById('bulkPause').value;
+            
+            selectedCats.forEach(cat => {
+                let changed = false;
+                if(bSector !== "") { cat.sector = bSector; changed = true; }
+                if(bWeapon !== "") { cat.weapon = bWeapon; changed = true; }
+                if(bFormat !== "") { cat.format = bFormat; changed = true; }
+                if(bPool !== "") { cat.poolSize = parseInt(bPool); changed = true; }
+                if(bPause !== "") { cat.pauseMins = parseInt(bPause); changed = true; }
+                
+                if(changed) {
+                    let activePS = (cat.format === 'caf' || cat.format.includes('squadre')) ? cat.athletes : (cat.poolSize || 7);
+                    cat.blocks = generateBlocks(cat.weapon, cat.format, cat.athletes, cat.passCount, activePS, day.startTime, cat.sector || 'olimpico');
+                }
+            });
+            closeModal('bulkEditModal');
+            autoSchedule();
+            customAlert("Modifiche multiple applicate!");
+        }
+
+        function deleteSelectedCategories() {
+            let day = getCurrentDayData();
+            let selCount = day.categories.filter(c => c.selected).length;
+            if(selCount === 0) return;
+            showConfirm("Elimina Selezionate", `Eliminare le ${selCount} categorie selezionate?`, () => {
+                saveState();
+                day.categories = day.categories.filter(c => !c.selected);
+                refreshCurrentView();
+            });
+        }
+
+        function setupMarqueeSelection() {
+            const container = document.getElementById('timeline-body');
+            const marquee = document.getElementById('selection-marquee');
+            let isSelecting = false;
+            let startX, startY;
+
+            container.addEventListener('mousedown', (e) => {
+                if(e.target.closest('.task-block') || e.target.closest('.cat-label')) return;
+                isSelecting = true;
+                const rect = container.getBoundingClientRect();
+                startX = e.clientX - rect.left + container.scrollLeft;
+                startY = e.clientY - rect.top + container.scrollTop;
+                
+                marquee.style.left = startX + 'px';
+                marquee.style.top = startY + 'px';
+                marquee.style.width = '0px';
+                marquee.style.height = '0px';
+                marquee.style.display = 'block';
+            });
+
+            container.addEventListener('mousemove', (e) => {
+                if(!isSelecting) return;
+                const rect = container.getBoundingClientRect();
+                let currentX = e.clientX - rect.left + container.scrollLeft;
+                let currentY = e.clientY - rect.top + container.scrollTop;
+
+                let minX = Math.min(startX, currentX);
+                let maxX = Math.max(startX, currentX);
+                let minY = Math.min(startY, currentY);
+                let maxY = Math.max(startY, currentY);
+
+                marquee.style.left = minX + 'px';
+                marquee.style.top = minY + 'px';
+                marquee.style.width = (maxX - minX) + 'px';
+                marquee.style.height = (maxY - minY) + 'px';
+            });
+
+            window.addEventListener('mouseup', (e) => {
+                if(!isSelecting) return;
+                isSelecting = false;
+                marquee.style.display = 'none';
+
+                let mRect = marquee.getBoundingClientRect();
+                let day = getCurrentDayData();
+                let changed = false;
+
+                document.querySelectorAll('.timeline-row').forEach(row => {
+                    let rRect = row.getBoundingClientRect();
+                    if (rRect.top < mRect.bottom && rRect.bottom > mRect.top) {
+                        let catId = row.getAttribute('data-cat-id');
+                        let cat = day.categories.find(c => c.id === catId);
+                        if(cat && !cat.selected) {
+                            cat.selected = true;
+                            changed = true;
+                        }
+                    }
+                });
+                
+                if(changed) refreshCurrentView();
+            });
+        }
+
+
         // --- TOGGLE VIEW LOGIC ---
         function toggleViewMode() {
             currentViewMode = currentViewMode === 'timeline' ? 'pistes' : 'timeline';
@@ -1088,7 +1271,7 @@
             bodyContainer.appendChild(timeCol);
 
             let gridArea = document.createElement('div');
-            gridArea.className = 'relative';
+            gridArea.className = 'relative pistes-bg-grid';
             gridArea.style.width = `${totalPistes * 40}px`;
             
             let totalHeight = getColOffset(day, bounds.end, bounds);
@@ -1813,36 +1996,52 @@
                 interact('.timeline-task-block').draggable({
                     inertia: false, 
                     listeners: { 
-                        start: e => { e.target.classList.add('is-dragging'); },
+                        start: e => { 
+                            e.target.classList.add('is-dragging'); 
+                            e.target.setAttribute('data-raw-x', 0);
+                        },
                         move: e => { 
-                            let x = (parseFloat(e.target.getAttribute('data-x')) || 0) + e.dx; 
-                            e.target.style.transform = `translate(${x}px, 0px)`; 
-                            e.target.setAttribute('data-x', x); 
+                            let rawX = (parseFloat(e.target.getAttribute('data-raw-x')) || 0) + e.dx; 
+                            e.target.setAttribute('data-raw-x', rawX); 
+                            
+                            let origLeft = parseFloat(e.target.style.left) || 0;
+                            let currentLeft = origLeft + rawX;
 
-                            let tooltip = document.getElementById('drag-tooltip');
-                            tooltip.classList.remove('hidden');
-                            tooltip.style.left = e.clientX + 'px';
-                            tooltip.style.top = (e.clientY - 30) + 'px';
-
-                            const containerRect = document.getElementById('timeline-body').getBoundingClientRect();
                             let day = getCurrentDayData();
                             let bounds = calculateDayBounds(day);
-                            let targetMins = findTimeForPixel(e.client.x - containerRect.left, bounds, day);
+
+                            // Calculate target minute based on the theoretical dragged top-left corner
+                            let targetMins = findTimeForPixel(currentLeft - 260, bounds, day);
+                            
+                            // Visual snapping calculation
+                            let targetLeft = 260 + getColOffset(day, targetMins, bounds);
+                            let snappedX = targetLeft - origLeft;
+                            e.target.style.transform = `translate(${snappedX}px, 0px)`; 
+
+                            // Update tooltip using the SNAPPED DOM position
+                            let blockRect = e.target.getBoundingClientRect();
+                            let tooltip = document.getElementById('drag-tooltip');
+                            tooltip.classList.remove('hidden');
+                            tooltip.style.left = blockRect.left + 'px';
+                            tooltip.style.top = (blockRect.top - 30) + 'px';
                             tooltip.innerText = minsToTime(targetMins);
                         },
                         end: e => {
                             e.target.classList.remove('is-dragging');
                             document.getElementById('drag-tooltip').classList.add('hidden');
+                            e.target.style.transform = 'none'; 
                             
-                            const containerRect = document.getElementById('timeline-body').getBoundingClientRect();
+                            let rawX = parseFloat(e.target.getAttribute('data-raw-x')) || 0;
+                            let origLeft = parseFloat(e.target.style.left) || 0;
+                            let currentLeft = origLeft + rawX;
+
                             let day = getCurrentDayData();
                             let bounds = calculateDayBounds(day);
-                            let targetMins = findTimeForPixel(e.client.x - containerRect.left, bounds, day);
-                            
-                            e.target.style.transform = 'none'; 
-                            e.target.setAttribute('data-x', 0);
-                            
+                            let targetMins = findTimeForPixel(currentLeft - 260, bounds, day);
                             let origMins = parseInt(e.target.getAttribute('data-orig-mins'));
+
+                            e.target.removeAttribute('data-raw-x');
+
                             let diffMins = targetMins - origMins;
                             if (diffMins === 0) { renderDay(); return; }
                             
@@ -1855,80 +2054,97 @@
                 interact('.piste-task-block').draggable({
                     inertia: false,
                     listeners: { 
-                        start: e => { e.target.classList.add('is-dragging'); },
+                        start: e => { 
+                            e.target.classList.add('is-dragging'); 
+                            e.target.setAttribute('data-raw-x', 0);
+                            e.target.setAttribute('data-raw-y', 0);
+                        },
                         move: e => { 
-                            let x = (parseFloat(e.target.getAttribute('data-x')) || 0) + e.dx; 
-                            let y = (parseFloat(e.target.getAttribute('data-y')) || 0) + e.dy; 
-                            e.target.style.transform = `translate(${x}px, ${y}px)`; 
-                            e.target.setAttribute('data-x', x); 
-                            e.target.setAttribute('data-y', y); 
+                            let rawX = (parseFloat(e.target.getAttribute('data-raw-x')) || 0) + e.dx; 
+                            let rawY = (parseFloat(e.target.getAttribute('data-raw-y')) || 0) + e.dy; 
+                            e.target.setAttribute('data-raw-x', rawX); 
+                            e.target.setAttribute('data-raw-y', rawY); 
 
-                            let tooltip = document.getElementById('drag-tooltip');
-                            tooltip.classList.remove('hidden');
-                            tooltip.style.left = e.clientX + 'px';
-                            tooltip.style.top = (e.clientY - 30) + 'px';
+                            let origLeft = parseFloat(e.target.style.left) || 0;
+                            let origTop = parseFloat(e.target.style.top) || 0;
+                            let currentLeft = origLeft + rawX;
+                            let currentTop = origTop + rawY;
 
                             let day = getCurrentDayData();
                             let layout = getPistesLayout(day);
                             let bounds = calculateDayBounds(day);
 
-                            const containerGrid = document.getElementById('view-pistes').querySelector('.relative.pistes-bg-grid');
-                            const containerRect = containerGrid.getBoundingClientRect();
-                            
-                            let dropX = e.client.x - containerRect.left;
-                            let dropY = e.client.y - containerRect.top;
-
-                            let targetPiste = Math.max(0, Math.min(layout.length - 1, Math.floor(dropX / 40)));
-                            let targetMins = findTimeForPixel(dropY, bounds, day);
-
+                            // Calculate logical target based on Top-Left
+                            let targetPiste = Math.max(0, Math.min(layout.length - 1, Math.floor(currentLeft / 40)));
+                            let targetMins = findTimeForPixel(currentTop, bounds, day);
                             let duration = parseInt(e.target.getAttribute('data-duration')) || timeStep;
                             targetMins = Math.min(targetMins, 1440 - duration); // Cap a mezzanotte
+
+                            // Visual Snap
+                            let targetLeft = targetPiste * 40;
+                            let targetTop = getColOffset(day, targetMins, bounds);
+
+                            let snappedX = targetLeft - origLeft;
+                            let snappedY = targetTop - origTop;
+
+                            e.target.style.transform = `translate(${snappedX}px, ${snappedY}px)`; 
+
+                            // Draw Tooltip via actual DOM element bound
+                            let blockRect = e.target.getBoundingClientRect();
+                            let tooltip = document.getElementById('drag-tooltip');
+                            tooltip.classList.remove('hidden');
+                            tooltip.style.left = blockRect.left + 'px';
+                            tooltip.style.top = (blockRect.top - 30) + 'px';
 
                             let pisteName = layout[targetPiste].isSpecial ? layout[targetPiste].name.substring(0,3).toUpperCase() : layout[targetPiste].name;
                             tooltip.innerText = `P.${pisteName} - ${minsToTime(targetMins)}`;
 
+                            // Move Background Highlights
                             let colHighlight = document.getElementById('piste-highlight-col');
                             let rowHighlight = document.getElementById('piste-highlight-row');
                             if(colHighlight && rowHighlight) {
-                                let blockPistes = parseInt(e.target.style.width) / 40 || 1;
+                                let blockPistes = parseInt(e.target.getAttribute('data-pistes')) || 1;
                                 colHighlight.style.display = 'block';
                                 colHighlight.style.left = (targetPiste * 40) + 'px';
                                 colHighlight.style.width = (blockPistes * 40) + 'px';
 
                                 rowHighlight.style.display = 'block';
-                                rowHighlight.style.top = getColOffset(day, targetMins, bounds) + 'px';
+                                rowHighlight.style.top = targetTop + 'px';
                                 rowHighlight.style.height = getColWidth(day, targetMins, duration) + 'px';
                             }
                         },
                         end: e => {
                             e.target.classList.remove('is-dragging');
                             document.getElementById('drag-tooltip').classList.add('hidden');
+                            
                             let colHighlight = document.getElementById('piste-highlight-col');
                             let rowHighlight = document.getElementById('piste-highlight-row');
                             if(colHighlight) colHighlight.style.display = 'none';
                             if(rowHighlight) rowHighlight.style.display = 'none';
 
-                            const containerGrid = document.getElementById('view-pistes').querySelector('.relative.pistes-bg-grid');
-                            if(!containerGrid) { renderPistesView(); return; }
-                            const containerRect = containerGrid.getBoundingClientRect();
+                            e.target.style.transform = 'none';
                             
-                            let dropX = e.client.x - containerRect.left;
-                            let dropY = e.client.y - containerRect.top;
-                            
-                            e.target.style.transform = 'none'; e.target.setAttribute('data-x', 0); e.target.setAttribute('data-y', 0);
-                            
+                            let rawX = parseFloat(e.target.getAttribute('data-raw-x')) || 0;
+                            let rawY = parseFloat(e.target.getAttribute('data-raw-y')) || 0;
+                            let origLeft = parseFloat(e.target.style.left) || 0;
+                            let origTop = parseFloat(e.target.style.top) || 0;
+                            let currentLeft = origLeft + rawX;
+                            let currentTop = origTop + rawY;
+
                             let day = getCurrentDayData();
                             let bounds = calculateDayBounds(day);
                             let layout = getPistesLayout(day);
 
-                            let targetPiste = Math.max(0, Math.min(layout.length - 1, Math.floor(dropX / 40)));
-                            let targetMins = findTimeForPixel(dropY, bounds, day);
-
+                            let targetPiste = Math.max(0, Math.min(layout.length - 1, Math.floor(currentLeft / 40)));
+                            let targetMins = findTimeForPixel(currentTop, bounds, day);
                             let duration = parseInt(e.target.getAttribute('data-duration')) || timeStep;
                             targetMins = Math.min(targetMins, 1440 - duration);
 
                             let origPiste = parseInt(e.target.getAttribute('data-orig-piste'));
                             let origMins = parseInt(e.target.getAttribute('data-orig-mins'));
+
+                            e.target.removeAttribute('data-raw-x');
+                            e.target.removeAttribute('data-raw-y');
 
                             let diffPistes = targetPiste - origPiste;
                             let diffMins = targetMins - origMins;
@@ -2238,3 +2454,5 @@
     </script>
 </body>
 </html>
+
+```
