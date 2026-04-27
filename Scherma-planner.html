@@ -1,0 +1,2320 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scherma Planner V6.3</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f3f4f6; color: #1f2937; overflow: hidden; }
+        
+        .timeline-container { overflow: auto; background: white; border: 1px solid #e5e7eb; box-shadow: 0 4px 6px rgba(0,0,0,0.05); position: relative; flex: 1; display: flex; flex-direction: column; user-select: none; }
+        .timeline-grid { display: grid; grid-template-columns: var(--grid-cols); min-width: max-content; }
+        .timeline-header { position: sticky; top: 0; background: #f8fafc; z-index: 40; border-bottom: 2px solid #cbd5e1; }
+        .timeline-header .cat-label-header { position: sticky; left: 0; z-index: 50; background: #f1f5f9; border-right: 2px solid #cbd5e1; }
+        .timeline-header-cell { border-right: 1px solid #e2e8f0; text-align: center; font-size: 0.75rem; font-weight: 600; padding: 8px 0; color: #475569; cursor: pointer; transition: background 0.2s; }
+        .timeline-header-cell:hover { background-color: #e2e8f0; }
+        .timeline-body { position: relative; flex-grow: 1; }
+
+        .timeline-row { position: relative; border-bottom: 1px solid #e2e8f0; height: 60px; background: white; transition: background-color 0.1s; }
+        .timeline-row:hover { background-color: #f8fafc; }
+        .timeline-row.selected { background-color: #dbeafe !important; outline: 2px solid #3b82f6; outline-offset: -2px; z-index: 5; }
+
+        .cat-label {
+            position: sticky; left: 0; background: white; z-index: 35; border-right: 2px solid #cbd5e1;
+            padding: 8px; font-weight: bold; font-size: 0.85rem; display: flex; align-items: center; justify-content: space-between;
+            height: 100%; box-shadow: 2px 0 5px rgba(0,0,0,0.05); cursor: grab; 
+        }
+        .cat-label:active { cursor: grabbing; }
+        .timeline-row.selected .cat-label { background-color: #eff6ff !important; }
+
+        .grid-lines { position: absolute; top: 0; bottom: 0; left: 260px; right: 0; display: flex; pointer-events: none; z-index: 0; }
+        .grid-line { border-right: 1px dashed #e2e8f0; height: 100%; flex-shrink: 0; transition: width 0.2s; }
+        .grid-line.hour-mark { border-right: 1px solid #cbd5e1; }
+
+        /* General blocks */
+        .task-block {
+            position: absolute; border-radius: 4px; display: flex; flex-direction: row; flex-wrap: wrap;
+            justify-content: flex-start; align-items: center; align-content: center; font-size: 0.7rem; font-weight: 600; color: #1e293b;
+            cursor: grab; z-index: 10; box-shadow: 0 2px 4px rgba(0,0,0,0.1); border: 1px solid rgba(0,0,0,0.2);
+            transition: box-shadow 0.2s, width 0.2s, height 0.2s; overflow: hidden; padding: 2px; gap: 4px;
+        }
+        .task-block:active { cursor: grabbing; box-shadow: 0 4px 12px rgba(0,0,0,0.4); z-index: 30; opacity: 0.9; }
+        .task-block.is-dragging { transition: none !important; opacity: 0.8; z-index: 999; }
+        
+        .task-block .pistes-badge { 
+            background: rgba(255,255,255,0.7); border-radius: 10px; padding: 1px 4px; font-size: 0.65rem; 
+            cursor: pointer; transition: background 0.2s; pointer-events: auto; display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+        }
+        .task-block .pistes-badge:hover { background: white; border: 1px solid #000; }
+        .task-block .task-block-text {
+            flex: 1 1 auto; min-width: 0; white-space: normal; line-height: 1.1; text-align: left; overflow: hidden; 
+            display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; word-break: break-word; pointer-events: none; font-size: 0.65rem;
+        }
+        
+        .timeline-task-block { top: 5px; height: 50px; }
+
+        .bg-spada { background-color: #bfdbfe; color: #1e3a8a; }
+        .bg-fioretto { background-color: #bbf7d0; color: #14532d; }
+        .bg-sciabola { background-color: #fed7aa; color: #7c2d12; }
+        
+        .bg-row-0 { background-color: #bfdbfe; color: #1e3a8a; } 
+        .bg-row-1 { background-color: #bbf7d0; color: #14532d; } 
+        .bg-row-2 { background-color: #fef08a; color: #713f12; } 
+        .bg-row-3 { background-color: #fecaca; color: #7f1d1d; } 
+        .bg-row-4 { background-color: #e9d5ff; color: #581c87; } 
+        .bg-row-5 { background-color: #fbcfe8; color: #831843; } 
+        .bg-row-6 { background-color: #fed7aa; color: #7c2d12; } 
+        .bg-row-7 { background-color: #99f6e4; color: #134e4a; } 
+
+        .pistes-counter-row { position: sticky; bottom: 0; background: #1e293b; z-index: 40; height: 40px; }
+        .pistes-counter-row .cat-label-footer { position: sticky; left: 0; z-index: 50; background: #0f172a; color: white; display: flex; align-items: center; justify-content: center; font-size: 0.85rem; font-weight: bold; }
+        .counter-cell { display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 0.8rem; border-right: 1px solid #334155; overflow: hidden; transition: width 0.2s;}
+        .counter-alert { background-color: #ef4444; }
+        .counter-warn { background-color: #eab308; color: black; }
+
+        /* Pistes View Classes */
+        .pistes-bg-grid {
+            background-size: 40px 40px;
+            background-image: 
+                linear-gradient(to right, rgba(226,232,240,0.6) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(226,232,240,0.6) 1px, transparent 1px);
+        }
+
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 100; align-items: center; justify-content: center; }
+        .modal.active { display: flex; }
+        .cat-action-btn { display: none; padding: 4px 8px; border-radius: 4px; color: white; font-size: 0.75rem; cursor: pointer; }
+        .cat-action-btn.show { display: block; }
+        .btn-edit { background-color: #3b82f6; }
+        .btn-edit:hover { background-color: #2563eb; }
+        .btn-delete { background-color: #ef4444; }
+        .btn-delete:hover { background-color: #dc2626; }
+        .day-tab { transition: all 0.2s; border: 2px solid transparent; }
+        #selection-marquee { position: absolute; border: 2px solid rgba(59, 130, 246, 0.8); background-color: rgba(59, 130, 246, 0.2); z-index: 60; pointer-events: none; display: none; }
+        .custom-cb { width: 16px; height: 16px; cursor: pointer; accent-color: #1e3a8a; }
+    </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden" data-creator="€nz0-m0rgh€s€">
+
+    <header class="bg-white text-blue-900 p-3 shadow-md flex justify-between items-center shrink-0 border-b border-gray-200">
+        <div class="mr-4 flex items-center">
+            <svg class="w-10 h-10 mr-3 drop-shadow-md rounded" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                    <linearGradient id="silver" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stop-color="#F3F4F6" /><stop offset="30%" stop-color="#9CA3AF" /><stop offset="70%" stop-color="#E5E7EB" /><stop offset="100%" stop-color="#4B5563" />
+                    </linearGradient>
+                </defs>
+                <polygon points="50,12 51.5,65 48.5,65" fill="url(#silver)" />
+                <line x1="50" y1="12" x2="50" y2="65" stroke="#ffffff" stroke-width="0.5" opacity="0.7" />
+                <path d="M 32 65 Q 50 82 68 65 Q 50 71 32 65 Z" fill="url(#silver)" />
+                <rect x="48" y="67" width="4" height="15" fill="url(#silver)" />
+                <rect x="47" y="67" width="6" height="2" fill="url(#silver)" />
+                <circle cx="50" cy="84" r="3" fill="url(#silver)" />
+                <g fill="url(#silver)">
+                    <rect x="22" y="25" width="4.5" height="50" />
+                    <rect x="22" y="25" width="18" height="2" />
+                    <polygon points="40,25 40,32 38,32 38,27 26.5,27 26.5,25" />
+                    <rect x="22" y="49" width="14" height="2" />
+                    <polygon points="36,49 36,54 34,54 34,51 26.5,51 26.5,49" />
+                    <rect x="22" y="73" width="18" height="2" />
+                    <polygon points="40,75 40,68 38,68 38,73 26.5,73 26.5,75" />
+                    <polygon points="18,25 22,25 22,27 20,27" />
+                    <polygon points="18,75 22,75 22,73 20,73" />
+                </g>
+                <g fill="#000080">
+                    <rect x="58" y="25" width="4.5" height="50" />
+                    <rect x="80" y="25" width="4.5" height="50" />
+                    <polygon points="58,25 62.5,25 71.5,55 74,55 84.5,25 80,25 71.5,48 62.5,25" />
+                    <polygon points="54,25 58,25 58,27 56,27" />
+                    <polygon points="54,75 66,75 66,73 62.5,73 62.5,75 58,75 58,73 56,73" />
+                    <polygon points="76,25 80,25 80,27 78,27" />
+                    <polygon points="84.5,25 88.5,25 86.5,27 84.5,27" />
+                    <polygon points="76,75 88.5,75 86.5,73 84.5,73 84.5,75 80,75 80,73 78,73" />
+                </g>
+            </svg>
+            <div>
+                <h1 class="text-xl font-black tracking-tight" style="font-family: 'Bodoni MT', serif;">Scherma Planner <span class="text-blue-500 text-sm">V6.3</span></h1>
+                <div class="flex items-center gap-2">
+                    <p class="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Tournament Manager</p>
+                    <span id="save-status" class="text-[10px] text-green-600 font-bold hidden opacity-0 transition-opacity duration-300"><i class="fa-solid fa-cloud-arrow-up"></i> Salvato</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="flex items-center gap-2 overflow-x-auto flex-1 px-2" id="day-tabs-container"></div>
+
+        <div class="flex gap-2 shrink-0 items-center ml-2">
+            <select id="timeStepSelect" onchange="changeTimeStep()" class="text-[11px] text-white bg-indigo-500 rounded p-1.5 mr-1 font-bold outline-none cursor-pointer shadow-sm">
+                <option value="15">⏱️ 15 min</option>
+                <option value="10">⏱️ 10 min</option>
+                <option value="5">⏱️ 5 min</option>
+            </select>
+            <select id="colorModeSelect" onchange="refreshCurrentView()" class="text-[11px] text-white bg-blue-900 rounded p-1.5 mr-1 font-bold outline-none cursor-pointer shadow-sm">
+                <option value="row">🎨 Colore Riga</option>
+                <option value="weapon">⚔️ Colore Arma</option>
+            </select>
+            <input type="file" id="importFile" accept=".xml" onchange="loadXML(event)" style="display:none">
+            <div class="flex flex-col gap-1">
+                <button onclick="document.getElementById('importFile').click()" class="bg-blue-100 text-blue-900 px-2 py-1 rounded font-bold text-[10px] shadow-sm hover:bg-blue-200 transition-colors"><i class="fa-solid fa-folder-open"></i> XML</button>
+                <button onclick="openExportModal('xml')" class="bg-blue-100 text-blue-900 px-2 py-1 rounded font-bold text-[10px] shadow-sm hover:bg-blue-200 transition-colors"><i class="fa-solid fa-save"></i> XML</button>
+            </div>
+            <div class="w-px bg-gray-300 mx-1 h-8"></div>
+            <div class="flex flex-col gap-1">
+                <button onclick="openExportModal('excel')" class="bg-green-600 text-white px-2 py-1 rounded font-bold text-[10px] flex items-center shadow-sm hover:bg-green-500 transition-colors"><i class="fa-solid fa-file-excel w-3"></i> Excel</button>
+                <button onclick="openExportModal('pdf')" id="btn-pdf" class="bg-red-600 text-white px-2 py-1 rounded font-bold text-[10px] flex items-center shadow-sm hover:bg-red-500 transition-colors"><i class="fa-solid fa-file-pdf w-3"></i> PDF</button>
+            </div>
+        </div>
+    </header>
+
+    <main class="flex-1 p-2 overflow-hidden flex flex-col gap-2 h-full">
+        <div class="bg-white p-2 rounded shadow flex items-center gap-3 shrink-0 border-l-4 border-blue-900 overflow-x-auto relative">
+            <div class="flex items-center gap-1 border-r pr-2 border-gray-300">
+                <label class="font-bold text-gray-700 text-[10px] text-nowrap"><i class="fa-solid fa-trophy mr-1 text-yellow-500"></i> Gara:</label>
+                <input type="text" id="tournament-name" value="Torneo di Scherma" class="border bg-yellow-50 rounded p-0.5 w-32 text-[10px] font-bold outline-none focus:border-yellow-500 text-blue-900" onchange="updateTournamentName()">
+            </div>
+            <div class="flex items-center gap-1 border-r pr-2 border-gray-300">
+                <label class="font-bold text-gray-700 text-[10px] flex items-center"><i class="fa-regular fa-clock text-gray-500 mr-0.5"></i> Inizio:</label>
+                <input type="time" id="day-start-time" class="border rounded p-0.5 w-16 text-center text-[10px] font-bold text-blue-700 outline-none focus:border-blue-500" onchange="updateDaySettings()">
+            </div>
+            <div class="flex items-center gap-1 border-r pr-2 border-gray-300">
+                <label class="font-bold text-gray-700 text-[10px] text-nowrap leading-tight text-right">Pedane<br><span class="font-normal text-[8px]">(Std-NV-Ca)</span>:</label>
+                <div class="flex gap-0.5">
+                    <input type="number" id="max-pistes" min="0" class="border rounded p-0.5 w-8 text-center text-[10px] font-bold outline-none focus:border-blue-500" title="Standard" onchange="updateDaySettings()">
+                    <input type="number" id="max-pistes-nv" min="0" class="border bg-yellow-50 rounded p-0.5 w-8 text-center text-[10px] font-bold text-yellow-900 outline-none focus:border-yellow-500" title="Non Vedenti" onchange="updateDaySettings()">
+                    <input type="number" id="max-pistes-car" min="0" class="border bg-purple-50 rounded p-0.5 w-8 text-center text-[10px] font-bold text-purple-900 outline-none focus:border-purple-500" title="Carrozzina" onchange="updateDaySettings()">
+                    <button onclick="openSpecialPistesModal()" class="bg-yellow-100 text-yellow-800 rounded p-0.5 px-1.5 ml-0.5 hover:bg-yellow-200 transition-colors shadow-sm" title="Pedane Speciali (Finali)"><i class="fa-solid fa-star text-[10px]"></i></button>
+                </div>
+            </div>
+            <div class="flex items-center gap-1 border-r pr-2 border-gray-300">
+                <label class="font-bold text-gray-700 text-[10px] text-nowrap leading-tight text-right" title="Arbitri per arma e settore">Arbitri<br><span class="font-normal text-[8px]">(Sp-Fi-Sc / NV-Ca)</span>:</label>
+                <div class="flex gap-0.5">
+                    <input type="number" id="ref-spada" min="0" class="border bg-blue-50 rounded p-0.5 w-8 text-center text-[10px] font-bold text-blue-900 outline-none focus:border-blue-500" title="Spada" onchange="updateDaySettings()">
+                    <input type="number" id="ref-fioretto" min="0" class="border bg-green-50 rounded p-0.5 w-8 text-center text-[10px] font-bold text-green-900 outline-none focus:border-green-500" title="Fioretto" onchange="updateDaySettings()">
+                    <input type="number" id="ref-sciabola" min="0" class="border bg-orange-50 rounded p-0.5 w-8 text-center text-[10px] font-bold text-orange-900 outline-none focus:border-orange-500" title="Sciabola" onchange="updateDaySettings()">
+                    <span class="w-px bg-gray-300 mx-0.5"></span>
+                    <input type="number" id="ref-nv" min="0" class="border bg-yellow-50 rounded p-0.5 w-8 text-center text-[10px] font-bold text-yellow-900 outline-none focus:border-yellow-500" title="Arbitri Non Vedenti" onchange="updateDaySettings()">
+                    <input type="number" id="ref-car" min="0" class="border bg-purple-50 rounded p-0.5 w-8 text-center text-[10px] font-bold text-purple-900 outline-none focus:border-purple-500" title="Arbitri Carrozzina" onchange="updateDaySettings()">
+                </div>
+            </div>
+            
+            <div class="ml-auto flex gap-1 shrink-0 items-center">
+                <div id="bulk-controls" class="hidden flex gap-1 items-center bg-gray-100 p-1 rounded border border-gray-300">
+                    <span class="text-[10px] font-bold text-gray-600 px-1"><span id="sel-count">0</span> Sel.</span>
+                    <button onclick="copySelectedToClipboard()" class="bg-blue-100 text-blue-800 px-1.5 py-1 rounded text-[10px] font-bold shadow-sm hover:bg-blue-200" title="Copia in memoria"><i class="fa-solid fa-copy"></i> Copia</button>
+                    <button onclick="openBulkEditModal()" class="bg-purple-600 text-white px-1.5 py-1 rounded text-[10px] font-bold shadow-sm hover:bg-purple-700" title="Modifica multipla"><i class="fa-solid fa-pen-to-square"></i> Bulk</button>
+                    <button onclick="deleteSelectedCategories()" class="bg-red-600 text-white px-1.5 py-1 rounded text-[10px] font-bold shadow-sm hover:bg-red-700"><i class="fa-solid fa-trash"></i></button>
+                </div>
+                
+                <button id="btn-paste-internal" onclick="pasteFromClipboard()" class="hidden bg-blue-800 text-white px-2 py-1 rounded text-[10px] font-bold shadow border border-blue-900 hover:bg-blue-700 animate-pulse"><i class="fa-solid fa-paste mr-1"></i> Incolla</button>
+                
+                <div class="w-px bg-gray-300 mx-1 h-6"></div>
+                <button onclick="undoAction()" class="bg-gray-200 text-gray-700 px-2 py-1 rounded text-[10px] font-bold border border-gray-400 hover:bg-gray-300 transition-colors" title="Annulla ultima azione (Ctrl+Z)"><i class="fa-solid fa-rotate-left"></i> Undo</button>
+                
+                <button onclick="clearCurrentDay()" class="bg-red-50 text-red-700 px-2 py-1 rounded text-[10px] font-bold border border-red-300 hover:bg-red-100 transition-colors">Svuota</button>
+                <button onclick="autoSchedule()" class="bg-blue-900 text-white px-2 py-1 rounded text-[10px] font-bold shadow hover:bg-blue-800 transition-colors">Auto-Organizza</button>
+                <button onclick="openAddModal()" class="bg-blue-100 text-blue-900 px-2 py-1 rounded text-[10px] font-bold border border-blue-300 hover:bg-blue-200 transition-colors"><i class="fa-solid fa-plus mr-1"></i> Aggiungi</button>
+                
+                <div class="w-px bg-gray-300 mx-0.5 h-6"></div>
+                <button id="btn-toggle-view" onclick="toggleViewMode()" class="bg-indigo-600 text-white px-3 py-1 rounded text-[10px] font-bold shadow border border-indigo-800 hover:bg-indigo-700 transition-colors">
+                    <i class="fa-solid fa-table-cells"></i> Vista Pedane
+                </button>
+            </div>
+        </div>
+
+        <div class="rounded-lg relative flex-1" id="export-area" style="overflow: hidden;">
+            
+            <div id="view-timeline" class="timeline-container absolute inset-0">
+                <div id="selection-marquee"></div>
+                <div class="timeline-grid timeline-header" id="timeline-header"></div>
+                <div class="timeline-body" id="timeline-body"><div class="grid-lines" id="grid-lines"></div></div>
+                <div class="timeline-grid pistes-counter-row" id="pistes-counter"></div>
+            </div>
+
+            <div id="view-pistes" class="hidden absolute inset-0 bg-white overflow-auto border border-gray-200 shadow-inner">
+                </div>
+
+        </div>
+    </main>
+
+    <div id="drag-tooltip" class="hidden fixed z-[9999] bg-yellow-400 text-yellow-900 text-xs font-black px-3 py-1.5 rounded shadow-lg pointer-events-none transform -translate-x-1/2 -translate-y-full border border-yellow-600" style="transition: opacity 0.1s ease-in-out;"></div>
+
+    <div id="importChoiceModal" class="modal" style="z-index: 300;">
+        <div class="bg-white p-5 rounded-lg shadow-2xl w-96 text-center">
+            <h2 class="font-bold text-lg mb-2 text-blue-900"><i class="fa-solid fa-file-import"></i> Modalità Importazione</h2>
+            <p class="text-sm mb-5 text-gray-600">Hai caricato un file XML. Come desideri procedere?</p>
+            <div class="flex flex-col gap-2">
+                <button onclick="executeXMLImport('replace')" class="bg-red-600 hover:bg-red-700 text-white py-2 rounded shadow font-bold transition-colors"><i class="fa-solid fa-folder-open mr-1"></i> Sostituisci intero progetto</button>
+                <button onclick="executeXMLImport('merge_current')" class="bg-blue-600 hover:bg-blue-700 text-white py-2 rounded shadow font-bold transition-colors"><i class="fa-solid fa-plus mr-1"></i> Aggiungi al giorno corrente</button>
+                <button onclick="executeXMLImport('add_days')" class="bg-green-600 hover:bg-green-700 text-white py-2 rounded shadow font-bold transition-colors"><i class="fa-solid fa-calendar-plus mr-1"></i> Aggiungi come nuove giornate</button>
+                <button onclick="closeModal('importChoiceModal'); pendingXMLData = null;" class="bg-gray-200 hover:bg-gray-300 py-2 rounded font-bold text-gray-700 transition-colors mt-2">Annulla</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="exportModal" class="modal" style="z-index: 250;">
+        <div class="bg-white p-5 rounded-lg shadow-2xl w-80 text-center">
+            <h2 class="font-bold text-lg mb-2 text-blue-900"><i class="fa-solid fa-file-export"></i> Esporta Documento</h2>
+            <p class="text-xs text-gray-600 mb-4">Scegli il nome del file da salvare:</p>
+            <input type="text" id="exportFileName" class="border rounded w-full py-2 px-3 mb-4 text-center font-bold text-sm outline-none focus:border-blue-500">
+            <div class="flex gap-2">
+                <button onclick="closeModal('exportModal')" class="bg-gray-200 hover:bg-gray-300 flex-1 py-2 rounded font-bold text-sm text-gray-700 transition-colors">Annulla</button>
+                <button onclick="confirmExport()" class="bg-blue-600 hover:bg-blue-700 text-white flex-1 py-2 rounded font-bold text-sm shadow transition-colors">Salva</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="specialPistesModal" class="modal" style="z-index: 150;">
+        <div class="bg-white p-4 rounded-lg shadow-2xl w-64 text-center">
+            <h2 class="font-bold border-b pb-2 mb-3 text-lg text-blue-900"><i class="fa-solid fa-star text-yellow-500"></i> Pedane Speciali</h2>
+            <p class="text-[10px] text-gray-500 mb-3">Aggiungi pedane personalizzate per le fasi finali. (Verranno posizionate all'inizio, prima della pedana 1).</p>
+            <div class="flex flex-col gap-2 text-left px-4">
+                <label class="flex items-center gap-2 text-xs font-bold cursor-pointer"><input type="checkbox" id="sp_podio" class="custom-cb"> <span class="w-3 h-3 bg-gray-200 inline-block border"></span> Podio</label>
+                <label class="flex items-center gap-2 text-xs font-bold cursor-pointer"><input type="checkbox" id="sp_rossa" class="custom-cb"> <span class="w-3 h-3 bg-red-200 inline-block border"></span> Rossa</label>
+                <label class="flex items-center gap-2 text-xs font-bold cursor-pointer"><input type="checkbox" id="sp_verde" class="custom-cb"> <span class="w-3 h-3 bg-green-200 inline-block border"></span> Verde</label>
+                <label class="flex items-center gap-2 text-xs font-bold cursor-pointer"><input type="checkbox" id="sp_blu" class="custom-cb"> <span class="w-3 h-3 bg-blue-200 inline-block border"></span> Blu</label>
+                <label class="flex items-center gap-2 text-xs font-bold cursor-pointer"><input type="checkbox" id="sp_gialla" class="custom-cb"> <span class="w-3 h-3 bg-yellow-200 inline-block border"></span> Gialla</label>
+            </div>
+            <div class="flex gap-2 mt-4 pt-3 border-t">
+                <button onclick="closeModal('specialPistesModal')" class="bg-gray-200 hover:bg-gray-300 flex-1 py-1.5 rounded font-bold text-sm text-gray-700 transition-colors">Annulla</button>
+                <button onclick="saveSpecialPistes()" class="bg-blue-600 hover:bg-blue-700 text-white flex-1 py-1.5 rounded shadow font-bold text-sm transition-colors">Salva</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="bulkEditModal" class="modal" style="z-index: 150;">
+        <div class="bg-white p-5 rounded-lg shadow-2xl w-80">
+            <h2 class="font-bold border-b pb-2 mb-4 text-lg text-purple-700"><i class="fa-solid fa-layer-group"></i> Modifica Multipla</h2>
+            <p class="text-[10px] text-gray-500 mb-3">I campi su "Invariato" manterranno il valore originale.</p>
+            
+            <div class="mb-2">
+                <label class="block text-[10px] text-gray-500 font-bold mb-1 uppercase">Settore</label>
+                <select id="bulkSector" class="border w-full p-2 rounded text-xs font-bold bg-gray-50 outline-none focus:border-purple-500">
+                    <option value="">-- Invariato --</option><option value="olimpico">Normodotati</option><option value="nv">Non Vedenti</option><option value="car">Carrozzina</option>
+                </select>
+            </div>
+            <div class="grid grid-cols-2 gap-2 mb-2">
+                <div>
+                    <label class="block text-[10px] text-gray-500 font-bold mb-1 uppercase">Arma</label>
+                    <select id="bulkWeapon" class="border w-full p-2 rounded text-xs font-bold bg-gray-50 outline-none focus:border-purple-500">
+                        <option value="">-- Idem --</option><option value="spada">Spada</option><option value="fioretto">Fioretto</option><option value="sciabola">Sciabola</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[10px] text-gray-500 font-bold mb-1 uppercase">Formula Gara</label>
+                    <select id="bulkFormat" class="border w-full p-2 rounded text-[10px] font-bold bg-gray-50 outline-none focus:border-purple-500">
+                        <option value="">-- Idem --</option>
+                        <option value="girone_diretta">Gironi+Diretta</option>
+                        <option value="doppia_tornata">Doppia+ED</option>
+                        <option value="doppia_tornata_no_ed">Solo Doppia Tornata</option>
+                        <option value="solo_diretta">Solo Diretta</option>
+                        <optgroup label="Formati Speciali">
+                            <option value="squadre_36">Squadre 36pt</option>
+                            <option value="squadre_45">Squadre 45pt</option>
+                            <option value="festa_scherma">U10 (Festa)</option>
+                            <option value="caf">C.A.F.</option>
+                        </optgroup>
+                    </select>
+                </div>
+            </div>
+            <div class="grid grid-cols-2 gap-2 mb-4">
+                <div>
+                    <label class="block text-[10px] text-gray-500 font-bold mb-1 uppercase">Max Girone</label>
+                    <select id="bulkPoolSize" class="border w-full p-2 rounded text-xs font-bold bg-gray-50 outline-none focus:border-purple-500">
+                        <option value="">-- Idem --</option><option value="8">8 Atl.</option><option value="7">7 Atl.</option><option value="6">6 Atl.</option><option value="5">5 Atl.</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[10px] text-gray-500 font-bold mb-1 uppercase">Pausa (min)</label>
+                    <input type="number" id="bulkPause" placeholder="Idem" step="5" class="border w-full p-2 rounded text-xs font-bold bg-gray-50 outline-none text-center focus:border-purple-500">
+                </div>
+            </div>
+
+            <div class="flex gap-2">
+                <button onclick="closeModal('bulkEditModal')" class="bg-gray-200 hover:bg-gray-300 flex-1 py-2 rounded font-bold text-sm text-gray-700">Annulla</button>
+                <button onclick="applyBulkEdit()" class="bg-purple-600 hover:bg-purple-700 text-white flex-1 py-2 rounded shadow font-bold text-sm">Applica</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="confirmModal" class="modal" style="z-index: 300;">
+        <div class="bg-white p-5 rounded-lg shadow-2xl w-80 text-center">
+            <h2 id="confirmModalTitle" class="font-bold text-lg mb-2 text-gray-800">Conferma</h2>
+            <p id="confirmModalMsg" class="mb-5 text-sm text-gray-600"></p>
+            <div class="flex gap-2">
+                <button onclick="closeModal('confirmModal')" class="bg-gray-200 hover:bg-gray-300 flex-1 py-2 rounded font-bold text-gray-700 transition-colors">Annulla</button>
+                <button id="confirmModalBtnOk" onclick="executeConfirm()" class="bg-red-600 hover:bg-red-700 text-white flex-1 py-2 rounded shadow font-bold transition-colors">Conferma</button>
+            </div>
+        </div>
+    </div>
+    
+    <div id="alertModal" class="modal" style="z-index: 300;">
+        <div class="bg-white p-5 rounded-lg shadow-2xl w-72 text-center">
+            <h2 class="text-lg font-bold mb-2 text-blue-900"><i class="fa-solid fa-info-circle"></i> Info</h2>
+            <p id="alertModalMsg" class="mb-5 text-sm font-bold text-gray-700"></p>
+            <button onclick="closeModal('alertModal')" class="bg-blue-900 hover:bg-blue-800 text-white px-4 py-2 rounded w-full font-bold shadow transition-colors">OK</button>
+        </div>
+    </div>
+    
+    <div id="pastePreviewModal" class="modal" style="z-index: 260;">
+        <div class="bg-white p-5 rounded-lg shadow-2xl w-[600px] max-w-[95vw] flex flex-col max-h-[90vh]">
+            <h2 class="font-bold border-b pb-2 mb-4 text-lg text-blue-900"><i class="fa-solid fa-clipboard-check"></i> Anteprima Incolla</h2>
+            <p class="text-xs text-gray-600 mb-2">Controlla e correggi il testo grezzo. L'algoritmo proverà a riconoscere i blocchi in tempo reale.</p>
+            
+            <div class="flex flex-col md:flex-row gap-4 overflow-hidden flex-1 min-h-[300px]">
+                <div class="flex-1 flex flex-col">
+                    <label class="text-[10px] font-bold text-gray-500 mb-1 uppercase">Testo Incollato (Modificabile):</label>
+                    <textarea id="pasteRawText" class="border p-2 rounded text-sm w-full flex-1 resize-none outline-none focus:border-blue-500 font-mono bg-yellow-50" oninput="updatePastePreview()"></textarea>
+                </div>
+                <div class="flex-1 flex flex-col">
+                    <label class="text-[10px] font-bold text-gray-500 mb-1 uppercase">Gare Riconosciute:</label>
+                    <div id="pasteRecognizedList" class="border p-2 rounded text-xs w-full flex-1 overflow-y-auto bg-gray-50 shadow-inner"></div>
+                </div>
+            </div>
+            
+            <div id="pasteErrorMsg" class="text-red-500 text-xs font-bold mt-2 hidden text-center bg-red-50 p-2 rounded border border-red-200">
+                <i class="fa-solid fa-triangle-exclamation"></i> Nessuna categoria valida trovata.
+            </div>
+            
+            <div class="flex gap-2 mt-4 pt-4 border-t shrink-0">
+                <button onclick="closeModal('pastePreviewModal')" class="bg-gray-200 hover:bg-gray-300 flex-1 py-2 rounded font-bold text-sm text-gray-700 transition-colors">Annulla</button>
+                <button id="btnConfirmPaste" onclick="confirmPastePreview()" class="bg-blue-600 hover:bg-blue-700 text-white flex-1 py-2 rounded shadow font-bold text-sm transition-colors">Importa Dati</button>
+            </div>
+        </div>
+    </div>
+    
+    <div id="startTimePromptModal" class="modal" style="z-index: 270;">
+        <div class="bg-white p-5 rounded-lg shadow-2xl w-80 text-center">
+            <p class="mb-3 font-bold text-blue-900 text-lg"><i class="fa-regular fa-clock"></i> Ora Inizio Giornata</p>
+            <p class="text-xs text-gray-600 mb-4">A che ora deve iniziare la gara?</p>
+            <input type="time" id="prompt-time-input" value="08:30" class="border rounded w-full py-2 px-3 mb-4 text-center font-bold text-xl outline-none focus:ring-2 focus:ring-blue-500">
+            <div class="flex gap-2">
+                <button onclick="closeModal('startTimePromptModal'); pendingPasteData = null;" class="bg-gray-200 hover:bg-gray-300 flex-1 py-2 rounded font-bold text-gray-700 transition-colors">Annulla</button>
+                <button onclick="confirmStartTimePrompt()" class="bg-blue-600 hover:bg-blue-700 text-white flex-1 py-2 rounded font-bold shadow transition-colors">Conferma</button>
+            </div>
+        </div>
+    </div>
+    
+    <div id="addModal" class="modal" style="z-index: 150;">
+        <div class="bg-white p-4 rounded-lg shadow-2xl w-80">
+            <h2 id="addModalTitle" class="font-bold border-b pb-2 mb-3 text-lg text-blue-900">Aggiungi Categoria</h2>
+            
+            <input type="text" id="newCatName" placeholder="Es. SpM Cadetti" class="border w-full p-2 mb-2 rounded text-sm font-semibold outline-none focus:border-blue-500">
+            
+            <div class="mb-2">
+                <label class="block text-[10px] text-gray-500 font-bold mb-1 uppercase">Settore</label>
+                <select id="newCatSector" onchange="handleSectorChange()" class="border w-full p-2 rounded text-xs font-bold bg-gray-50 outline-none focus:border-blue-500">
+                    <option value="olimpico">Normodotati</option>
+                    <option value="nv">Non Vedenti</option>
+                    <option value="car">Carrozzina</option>
+                </select>
+            </div>
+
+            <div class="grid grid-cols-2 gap-2 mb-2">
+                <div>
+                    <label class="block text-[10px] text-gray-500 font-bold mb-1 uppercase">Arma</label>
+                    <select id="newCatWeapon" class="border p-2 w-full rounded text-xs outline-none focus:border-blue-500">
+                        <option value="spada">Spada</option>
+                        <option value="fioretto">Fioretto</option>
+                        <option value="sciabola">Sciabola</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[10px] text-gray-500 font-bold mb-1 uppercase">Formato/Girone</label>
+                    <select id="newCatPoolSize" onchange="updateAddModalStats(false)" class="border w-full p-2 rounded text-xs outline-none focus:border-blue-500">
+                        <option value="8">8 Atleti</option><option value="7" selected>7 Atleti</option><option value="6">6 Atleti</option><option value="5">5 Atleti</option><option value="4">4 Atleti</option><option value="3">3 Atleti</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="mb-2">
+                <label class="block text-[10px] text-gray-500 font-bold mb-1 uppercase">Formula Gara</label>
+                <select id="newCatFormat" onchange="updateAddModalStats(false)" class="border w-full p-2 rounded text-[11px] outline-none focus:border-blue-500 bg-gray-50 font-bold">
+                    <option value="girone_diretta">Gironi + Diretta</option>
+                    <option value="doppia_tornata">Doppia Tornata + ED</option>
+                    <option value="doppia_tornata_no_ed">Solo Doppia Tornata</option>
+                    <option value="solo_diretta">Solo Diretta</option>
+                    <optgroup label="Speciali">
+                        <option value="squadre_36">Squadre a 36 pt.</option>
+                        <option value="squadre_45">Squadre a 45 pt.</option>
+                        <option value="festa_scherma">Festa Scherma (U10)</option>
+                        <option value="caf">C.A.F.</option>
+                    </optgroup>
+                </select>
+            </div>
+
+            <div class="grid grid-cols-2 gap-2 mb-2">
+                <div>
+                    <label id="lbl-cat-athletes" class="block text-[10px] text-gray-500 font-bold mb-1 uppercase">Tot Iscritti</label>
+                    <input type="number" id="newCatAthletes" oninput="updateAddModalStats(true)" placeholder="0" class="border w-full p-1.5 rounded text-sm font-bold text-center outline-none focus:border-blue-500">
+                </div>
+                <div>
+                    <label id="lbl-cat-pass" class="block text-[10px] text-gray-500 font-bold mb-1 uppercase">Qualificati a ED</label>
+                    <input type="number" id="newCatPass" placeholder="0" class="border w-full p-1.5 rounded text-sm font-bold text-center outline-none focus:border-blue-500">
+                </div>
+            </div>
+            <div id="poolBreakdownText" class="text-[10px] text-blue-600 font-bold mb-2 h-3 text-center"></div>
+
+            <div class="mb-4">
+                <label class="block text-[10px] text-gray-500 font-bold mb-1 uppercase">Pausa (minuti)</label>
+                <input type="number" id="newCatPause" value="0" step="5" class="border w-full p-1.5 rounded text-sm text-center outline-none focus:border-blue-500">
+            </div>
+            <div class="flex gap-2">
+                <button onclick="closeModal('addModal')" class="bg-gray-200 hover:bg-gray-300 flex-1 py-1.5 rounded font-bold text-sm text-gray-700 transition-colors">Annulla</button>
+                <button id="btnRegenerateCat" onclick="regenerateCategory()" class="hidden bg-orange-500 hover:bg-orange-600 text-white flex-1 py-1.5 rounded shadow font-bold text-sm transition-colors" title="Azzera manualità e ricalcola"><i class="fa-solid fa-rotate-right"></i> Rigenera</button>
+                <button onclick="saveCategory()" class="bg-green-600 hover:bg-green-700 text-white flex-1 py-1.5 rounded shadow font-bold text-sm transition-colors"><span id="addModalBtnText">Salva</span></button>
+            </div>
+        </div>
+    </div>
+    
+    <div id="editModal" class="modal" style="z-index: 150;">
+        <div class="bg-white p-5 rounded-lg shadow-2xl w-80">
+            <h2 id="editModalTitle" class="font-bold mb-1 text-lg text-blue-900">Modifica Fase</h2>
+            <p id="editModalDesc" class="text-xs mb-4 text-gray-500 font-bold border-b pb-2"></p>
+            <div class="grid grid-cols-2 gap-3 mb-3">
+                <div>
+                    <label class="block text-xs font-bold mb-1 text-gray-700">Pedane in uso:</label>
+                    <input type="number" id="editPistesInput" oninput="updateEditPreview()" class="border w-full p-2 rounded font-bold text-center outline-none focus:border-blue-500" min="1">
+                </div>
+                <div id="editGironeConfig">
+                    <label class="block text-xs font-bold mb-1 text-gray-700" id="lbl-edit-pool">Max Girone:</label>
+                    <input type="number" id="editPoolSizeInput" onchange="updateEditPreview()" class="border w-full p-2 rounded font-bold text-center outline-none focus:border-blue-500" min="3">
+                </div>
+            </div>
+            <div class="mb-4 w-full">
+                <label class="block text-xs font-bold mb-1 text-gray-700">Durata Manuale (minuti):</label>
+                <div class="flex items-center gap-2 w-full">
+                    <input type="number" id="editDurationManual" step="5" class="border flex-1 min-w-0 p-2 rounded font-bold text-center text-blue-900 bg-blue-50 outline-none focus:border-blue-500">
+                    <button onclick="document.getElementById('editDurationManual').value = parseInt(document.getElementById('editDurationManual').value)+timeStep" class="bg-gray-200 hover:bg-gray-300 w-10 py-2 rounded font-bold transition-colors shrink-0">+</button>
+                    <button onclick="document.getElementById('editDurationManual').value = Math.max(timeStep, parseInt(document.getElementById('editDurationManual').value)-timeStep)" class="bg-gray-200 hover:bg-gray-300 w-10 py-2 rounded font-bold transition-colors shrink-0">-</button>
+                </div>
+            </div>
+            
+            <div id="editEdConfig" class="mb-4 hidden">
+                <button onclick="splitEdBlock()" class="w-full bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 rounded shadow text-xs transition-colors mb-2"><i class="fa-solid fa-scissors"></i> Dividi in assalti singoli (Sfasa)</button>
+            </div>
+            
+            <div id="reuniteEdConfig" class="mb-4 hidden">
+                <button onclick="reuniteEdBlock()" class="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-2 rounded shadow text-xs transition-colors mb-2"><i class="fa-solid fa-link"></i> Riunisci Assalti</button>
+            </div>
+
+            <div class="mb-4">
+                <button id="btnToggleLock" onclick="toggleBlockLock()" class="w-full text-white font-bold py-2 rounded shadow text-xs transition-colors mb-2"></button>
+            </div>
+
+            <div class="flex gap-2 border-t pt-4">
+                <button onclick="deleteCurrentBlock()" class="bg-red-600 text-white flex-1 py-2 rounded font-bold text-sm shadow hover:bg-red-700 transition-colors" title="Rimuove solo questa fase"><i class="fa-solid fa-trash"></i> Fase</button>
+                <button onclick="closeModal('editModal')" class="bg-gray-200 hover:bg-gray-300 flex-1 py-2 rounded font-bold text-sm text-gray-700 transition-colors">Annulla</button>
+                <button onclick="savePistes()" class="bg-blue-600 hover:bg-blue-700 text-white flex-1 py-2 rounded font-bold shadow text-sm transition-colors">Applica</button>
+            </div>
+        </div>
+    </div>
+    
+    <div id="addDayModal" class="modal" style="z-index: 150;">
+        <div class="bg-white p-5 rounded-lg shadow-2xl w-72">
+            <h2 class="font-bold mb-4 border-b pb-2 text-blue-900 text-lg">Nuova Giornata</h2>
+            <div class="mb-3">
+                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Data Gara</label>
+                <input type="date" id="newDayDate" onchange="autoFillDayName()" class="border w-full p-2 rounded outline-none focus:border-blue-500">
+            </div>
+            <div class="mb-3">
+                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Ora Inizio Gara</label>
+                <input type="time" id="newDayStartTime" value="08:30" class="border w-full p-2 rounded outline-none focus:border-blue-500 font-bold text-center">
+            </div>
+            <div class="mb-5">
+                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Nome Giorno</label>
+                <input type="text" id="newDayName" placeholder="Es. Sabato" class="border w-full p-2 rounded outline-none focus:border-blue-500 text-center font-bold">
+            </div>
+            <div class="flex gap-2">
+                <button onclick="closeModal('addDayModal')" class="bg-gray-200 hover:bg-gray-300 flex-1 py-2 rounded font-bold text-sm text-gray-700 transition-colors">Annulla</button>
+                <button onclick="saveDay()" class="bg-blue-600 hover:bg-blue-700 text-white flex-1 w-full p-2 rounded shadow font-bold transition-colors">Crea</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        setTimeout(() => { console.log("%c\u2694\uFE0F " + atob("UGxhbm5lciBieSBFbnpvIE1vcmdoZXNl"), "color:#1e3a8a;font-size:12px;font-weight:bold"); }, 1000);
+        
+        // --- UTILS ---
+        const timeToMins = (h, m) => parseInt(h) * 60 + parseInt(m);
+        
+        const minsToTime = (mins) => {
+            if (mins >= 1440) return "00:00";
+            let h = Math.floor(mins / 60);
+            let m = mins % 60;
+            return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+        };
+
+        const generateId = (prefix) => prefix + '_' + Date.now() + Math.random().toString(36).substr(2, 9);
+        
+        // --- GLOBAL STATE & HISTORY ---
+        let currentDayId = 'day_1', editingCatId = null, draggedRowIndex = null, activeCatActions = null, pendingPasteData = null, currentEditBlock = null;
+        let confirmActionCallback = null, internalClipboard = [];
+        let exportTypePending = null, pendingXMLData = null, globalParsedPasteData = [];
+        let currentViewMode = 'timeline'; 
+        let globalTournamentName = "Torneo di Scherma";
+        let timeStep = 15; // Dynamic Time Step
+        let database = [{ id:'day_1', title:'Sabato', date:getNextSaturday(), startTime:510, maxPistes: 10, maxPistesNV: 0, maxPistesCar: 0, refs: {spada: 10, fioretto: 10, sciabola: 10, nv: 2, car: 2}, categories:[] }];
+        
+        const poolDurationsMins = { spada:{3:30,4:45,5:75,6:105,7:120,8:150}, fioretto:{3:30,4:45,5:75,6:105,7:120,8:150}, sciabola:{3:20,4:30,5:45,6:60,7:90,8:105} };
+
+        // HISTORY SYSTEM (CTRL+Z)
+        let historyStack = [];
+        const MAX_HISTORY = 20;
+
+        function saveState() {
+            historyStack.push(JSON.stringify(database));
+            if(historyStack.length > MAX_HISTORY) historyStack.shift();
+        }
+
+        function undoAction() {
+            if(historyStack.length > 0) {
+                let prevState = historyStack.pop();
+                database = JSON.parse(prevState);
+                persistData();
+                refreshCurrentView();
+                customAlert("Azione annullata con successo.");
+            } else {
+                customAlert("Nessuna azione precedente da annullare.");
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+                e.preventDefault();
+                undoAction();
+            }
+        });
+
+        function getCurrentDayData() { return database.find(d => d.id === currentDayId); }
+        function getNextSaturday() { let d=new Date(), diff=6-d.getDay(); if(diff<=0) diff+=7; return new Date(d.getTime()+diff*24*60*60*1000).toISOString().split('T')[0]; }
+
+        function persistData() {
+            const data = { v:16, tournamentName: globalTournamentName, timeStep: timeStep, days: database };
+            localStorage.setItem('schermaPlannerDB', JSON.stringify(data));
+            showSaveIndicator();
+        }
+
+        function showSaveIndicator() {
+            const ind = document.getElementById('save-status');
+            if(!ind) return;
+            ind.classList.remove('hidden'); setTimeout(()=>ind.classList.remove('opacity-0'), 10);
+            setTimeout(()=> { ind.classList.add('opacity-0'); setTimeout(()=>ind.classList.add('hidden'), 300); }, 2000);
+        }
+
+        function loadPersistedData() {
+            try {
+                const ls = localStorage.getItem('schermaPlannerDB');
+                if(ls) {
+                    const d = JSON.parse(ls);
+                    if(d.tournamentName) {
+                        globalTournamentName = d.tournamentName;
+                        if (document.getElementById('tournament-name')) document.getElementById('tournament-name').value = globalTournamentName;
+                    }
+                    if(d.timeStep) {
+                        timeStep = d.timeStep;
+                        if(document.getElementById('timeStepSelect')) document.getElementById('timeStepSelect').value = timeStep;
+                    }
+                    if(d.days && d.days.length > 0) {
+                        database = d.days;
+                        database.forEach(day => {
+                            if(!day.hiddenCols) day.hiddenCols = [];
+                            if(day.maxPistes === undefined) day.maxPistes = d.maxP || 10;
+                            if(day.maxPistesNV === undefined) day.maxPistesNV = 0;
+                            if(day.maxPistesCar === undefined) day.maxPistesCar = 0;
+                            if(day.refs === undefined) day.refs = d.refs || {spada:10, fioretto:10, sciabola:10, nv:2, car:2};
+                            if(day.refs.nv === undefined) day.refs.nv = 2;
+                            if(day.refs.car === undefined) day.refs.car = 2;
+                            day.categories.forEach(cat => { if(!cat.sector) cat.sector = 'olimpico'; });
+                        });
+                        currentDayId = database[0].id;
+                    }
+                }
+            } catch(e) { console.error("Restore failed", e); }
+        }
+
+        function updateTournamentName() { globalTournamentName = document.getElementById('tournament-name')?.value || "Torneo di Scherma"; persistData(); }
+
+        function changeTimeStep() {
+            saveState();
+            timeStep = parseInt(document.getElementById('timeStepSelect').value) || 15;
+            autoSchedule();
+        }
+
+        // --- HIDE/COLLAPSE COLUMNS ---
+        function toggleCol(mins) {
+            let day = getCurrentDayData();
+            if(!day.hiddenCols) day.hiddenCols = [];
+            let idx = day.hiddenCols.indexOf(mins);
+            if(idx > -1) {
+                day.hiddenCols.splice(idx, 1);
+            } else {
+                day.hiddenCols.push(mins);
+            }
+            refreshCurrentView();
+        }
+
+        function getColOffset(day, targetMins, bounds) {
+            let x = 0;
+            for(let m = bounds.start; m < targetMins; m += timeStep) {
+                x += (day.hiddenCols && day.hiddenCols.includes(m)) ? 16 : 40;
+            }
+            return x;
+        }
+
+        function getColWidth(day, startMins, duration) {
+            let w = 0;
+            let endMins = startMins + duration;
+            for(let m = startMins; m < endMins; m += timeStep) {
+                w += (day.hiddenCols && day.hiddenCols.includes(m)) ? 16 : 40;
+            }
+            return w;
+        }
+
+        function findTimeForPixel(px, bounds, day) {
+            if (px <= 0) return bounds.start;
+            let currentX = 0;
+            for (let m = bounds.start; m < bounds.end; m += timeStep) {
+                let colW = (day.hiddenCols && day.hiddenCols.includes(m)) ? 16 : 40;
+                if (px >= currentX && px < currentX + colW) {
+                    return m;
+                }
+                currentX += colW;
+            }
+            return bounds.end;
+        }
+
+        function openSpecialPistesModal() {
+            let day = getCurrentDayData();
+            let sp = day.specialPistes || [];
+            document.getElementById('sp_podio').checked = sp.includes('podio');
+            document.getElementById('sp_rossa').checked = sp.includes('rossa');
+            document.getElementById('sp_verde').checked = sp.includes('verde');
+            document.getElementById('sp_blu').checked = sp.includes('blu');
+            document.getElementById('sp_gialla').checked = sp.includes('gialla');
+            document.getElementById('specialPistesModal').classList.add('active');
+        }
+
+        function saveSpecialPistes() {
+            saveState();
+            let day = getCurrentDayData();
+            let oldSpCount = day.specialPistes ? day.specialPistes.length : 0;
+            
+            let sp = [];
+            if(document.getElementById('sp_podio').checked) sp.push('podio');
+            if(document.getElementById('sp_rossa').checked) sp.push('rossa');
+            if(document.getElementById('sp_verde').checked) sp.push('verde');
+            if(document.getElementById('sp_blu').checked) sp.push('blu');
+            if(document.getElementById('sp_gialla').checked) sp.push('gialla');
+            
+            day.specialPistes = sp;
+            let newSpCount = sp.length;
+            let diff = newSpCount - oldSpCount;
+            
+            if (diff !== 0) {
+                day.categories.forEach(cat => {
+                    cat.blocks.forEach(b => {
+                        if (b.startPiste !== undefined) {
+                            b.startPiste = Math.max(0, b.startPiste + diff);
+                        }
+                    });
+                });
+            }
+            
+            persistData();
+            closeModal('specialPistesModal');
+            refreshCurrentView();
+        }
+
+        // --- PISTES LAYOUT HELPER ---
+        function getPistesLayout(day) {
+            let map = [];
+            let spDefs = {
+                'podio': { name: 'Podio', color: '#e5e7eb', textClass: 'text-gray-800' }, 
+                'rossa': { name: 'Rossa', color: '#fecaca', textClass: 'text-red-800' }, 
+                'verde': { name: 'Verde', color: '#bbf7d0', textClass: 'text-green-800' },
+                'blu': { name: 'Blu', color: '#bfdbfe', textClass: 'text-blue-800' },
+                'gialla': { name: 'Gialla', color: '#fef08a', textClass: 'text-yellow-800' }
+            };
+
+            if(day.specialPistes) {
+                day.specialPistes.forEach(spId => {
+                    let def = spDefs[spId];
+                    if(def) map.push({ index: map.length, name: def.name, type: 'special', color: def.color, textClass: def.textClass, isSpecial: true });
+                });
+            }
+
+            let maxPStd = parseInt(day.maxPistes) || 0;
+            let maxPNV = parseInt(day.maxPistesNV) || 0;
+            let maxPCar = parseInt(day.maxPistesCar) || 0;
+            
+            for(let i=0; i<maxPStd; i++) map.push({ index: map.length, name: (i+1).toString(), type: 'std', color: 'transparent', textClass: 'text-gray-700' });
+            for(let i=0; i<maxPNV; i++) map.push({ index: map.length, name: (maxPStd+i+1).toString(), type: 'nv', color: '#fef9c3', textClass: 'text-yellow-800' });
+            for(let i=0; i<maxPCar; i++) map.push({ index: map.length, name: (maxPStd+maxPNV+i+1).toString(), type: 'car', color: '#f3e8ff', textClass: 'text-purple-800' });
+            
+            return map;
+        }
+
+        // --- TOGGLE VIEW LOGIC ---
+        function toggleViewMode() {
+            currentViewMode = currentViewMode === 'timeline' ? 'pistes' : 'timeline';
+            const btn = document.getElementById('btn-toggle-view');
+            
+            if (currentViewMode === 'timeline') {
+                btn.innerHTML = '<i class="fa-solid fa-table-cells"></i> Vista Pedane';
+                btn.classList.replace('bg-green-600', 'bg-indigo-600');
+                btn.classList.replace('hover:bg-green-700', 'hover:bg-indigo-700');
+                btn.classList.replace('border-green-800', 'border-indigo-800');
+                document.getElementById('view-timeline').classList.remove('hidden');
+                document.getElementById('view-pistes').classList.add('hidden');
+            } else {
+                btn.innerHTML = '<i class="fa-solid fa-bars-staggered"></i> Vista Categorie';
+                btn.classList.replace('bg-indigo-600', 'bg-green-600');
+                btn.classList.replace('hover:bg-indigo-700', 'hover:bg-green-700');
+                btn.classList.replace('border-indigo-800', 'border-green-800');
+                document.getElementById('view-timeline').classList.add('hidden');
+                document.getElementById('view-pistes').classList.remove('hidden');
+            }
+            refreshCurrentView();
+            setupDraggable(); 
+        }
+
+        function refreshCurrentView() {
+            if (currentViewMode === 'timeline') {
+                renderHeaderGrid();
+                renderDay();
+            } else {
+                renderPistesView();
+            }
+        }
+
+        // --- CORE MATH ENGINE (Block Generation & Duration) ---
+        function getBlockDuration(weapon, type, count, pistes, ps = 7, format = 'girone_diretta') {
+            let dur = 0, w = (weapon === 'sciabola') ? 'sciabola' : 'spada';
+            if (format === 'squadre_36' || format === 'squadre_45') {
+                let T = format === 'squadre_36' ? 60 : 90;
+                if (type === 'ed') {
+                    dur = Math.ceil(count / (pistes || 1)) * T;
+                } else {
+                    let teams = ps; 
+                    if (teams >= 3 && teams <= 5) {
+                        let pPerG = teams >= 4 ? 2 : 1;
+                        let turni = Math.ceil((teams * (teams - 1) / 2) / pPerG);
+                        let ondate = Math.ceil(pPerG / (pistes || 1));
+                        dur = ondate * turni * T;
+                    } else {
+                        let tp = Math.ceil(teams / 4);
+                        let bs = Math.floor(teams / tp);
+                        let r = teams % tp;
+                        let numPoolsOf4 = (bs === 4) ? tp : r;
+                        let numPoolsOf3 = (bs === 4) ? 0 : (tp - r);
+                        let pn = (numPoolsOf4 * 2) + (numPoolsOf3 * 1);
+                        let ondate = Math.ceil(pn / (pistes || 1));
+                        dur = ondate * 3 * T; 
+                    }
+                }
+            } else if (format === 'caf') {
+                let p_eff = Math.max(1, Math.min(pistes || 1, Math.floor(ps / 2)));
+                dur = Math.ceil((ps * (ps - 1) / 2) / p_eff) * 5;
+            } else if (format === 'festa_scherma') {
+                dur = Math.ceil(count / (pistes || 1)) * ((ps * (ps - 1) / 2) * 4);
+            } else {
+                if (type === 'gironi') dur = Math.ceil(count / (pistes || 1)) * (poolDurationsMins[w][ps] || 120);
+                else dur = Math.ceil(count / (pistes || 1)) * ((weapon === 'sciabola') ? 10 : 15);
+            }
+            return Math.max(timeStep, Math.ceil(dur / timeStep) * timeStep);
+        }
+
+        function createEDPhases(weapon, format, passCount, startMins) {
+            if (!passCount || passCount < 2) return [];
+            let edBlocks = [];
+            let currentAthletes = passCount;
+            let currentStart = startMins;
+
+            while (currentAthletes > 1) {
+                let T = Math.pow(2, Math.ceil(Math.log2(currentAthletes)));
+                let matches = currentAthletes === T ? T / 2 : currentAthletes - (T / 2);
+                let nextAthletes = T / 2;
+
+                let phaseName = T === 2 ? "Finale" : T === 4 ? "Semifinali" : `Tab. ${T}`;
+                
+                let idealPistes = matches;
+                if (T <= 4) idealPistes = Math.min(idealPistes, T === 4 ? 2 : 1);
+                else idealPistes = Math.min(idealPistes, 8);
+
+                let d = getBlockDuration(weapon, 'ed', matches, idealPistes, 2, format);
+                
+                edBlocks.push({ 
+                    id: generateId('b'), 
+                    name: phaseName, 
+                    type: 'ed', 
+                    count: matches,
+                    pool_size: 2, 
+                    duration: d, 
+                    pistes: Math.max(1, idealPistes), 
+                    startMins: currentStart,
+                    startPiste: 0,
+                    manualOverride: false 
+                });
+
+                currentStart += d;
+                currentAthletes = nextAthletes;
+            }
+            return edBlocks;
+        }
+
+        function generateBlocks(weapon, format, athletes, passCount, poolSize, startMins, sector) {
+            let blocks = [];
+            let b1Pistes = Math.ceil((athletes || 1) / poolSize) || 1;
+            
+            if (format === 'girone_diretta') {
+                let d1 = getBlockDuration(weapon, 'gironi', b1Pistes, b1Pistes, poolSize, format);
+                blocks.push({ id: generateId('b'), name: "Gironi", type: 'gironi', count: b1Pistes, pool_size: poolSize, duration: d1, pistes: b1Pistes, startMins: startMins, startPiste: 0, manualOverride: false });
+                blocks = blocks.concat(createEDPhases(weapon, format, passCount, startMins + d1));
+            } else if (format === 'doppia_tornata' || format === 'doppia_tornata_no_ed') {
+                let d1 = getBlockDuration(weapon, 'gironi', b1Pistes, b1Pistes, poolSize, format);
+                blocks.push({ id: generateId('b'), name: "Gir T1", type: 'gironi', count: b1Pistes, pool_size: poolSize, duration: d1, pistes: b1Pistes, startMins: startMins, startPiste: 0, manualOverride: false });
+                blocks.push({ id: generateId('b'), name: "Gir T2", type: 'gironi', count: b1Pistes, pool_size: poolSize, duration: d1, pistes: b1Pistes, startMins: startMins + d1, startPiste: 0, manualOverride: false });
+                if (format === 'doppia_tornata') {
+                    blocks = blocks.concat(createEDPhases(weapon, format, passCount, startMins + (d1 * 2)));
+                }
+            } else if (format === 'solo_diretta') {
+                blocks = blocks.concat(createEDPhases(weapon, format, athletes, startMins));
+            } else if (format === 'caf') {
+                let pistes = Math.max(1, Math.floor((athletes||2)/2));
+                let d1 = getBlockDuration(weapon, 'gironi', 1, pistes, athletes, format);
+                blocks.push({ id: generateId('b'), name: "C.A.F.", type: 'gironi', count: 1, pool_size: athletes, duration: d1, pistes: pistes, startMins: startMins, startPiste: 0, manualOverride: false });
+            } else if (format === 'squadre_36' || format === 'squadre_45') {
+                let gironiPistes = athletes >= 4 ? 2 : 1;
+                let d1 = getBlockDuration(weapon, 'gironi', 1, gironiPistes, athletes, format);
+                blocks.push({ id: generateId('b'), name: "Gironi Sq", type: 'gironi', count: 1, pool_size: athletes, duration: d1, pistes: gironiPistes, startMins: startMins, startPiste: 0, manualOverride: false });
+                blocks = blocks.concat(createEDPhases(weapon, format, passCount, startMins + d1));
+            } else if (format === 'festa_scherma') {
+                let d1 = getBlockDuration(weapon, 'gironi', b1Pistes, b1Pistes, poolSize, format);
+                blocks.push({ id: generateId('b'), name: "Gironi", type: 'gironi', count: b1Pistes, pool_size: poolSize, duration: d1, pistes: b1Pistes, startMins: startMins, startPiste: 0, manualOverride: false });
+            }
+            return blocks;
+        }
+
+        // --- DOM RENDER & ALGORITHMS ---
+        function calculateDayBounds(day) {
+            let start = day.startTime || 480, end = start + 240;
+            day.categories.forEach(c => c.blocks.forEach(b => { if (b.startMins + b.duration > end) end = b.startMins + b.duration; }));
+            // Aggiungo padding per permettere lo spostamento, max fino a mezzanotte
+            end += 120;
+            end = Math.min(1440, Math.ceil((end + 60) / timeStep) * timeStep);
+            return { start, end };
+        }
+
+        function renderTabs() {
+            const container = document.getElementById('day-tabs-container'); container.innerHTML = '';
+            database.forEach(day => {
+                const btn = document.createElement('div');
+                btn.className = `day-tab flex items-center gap-2 bg-blue-100 text-blue-900 px-3 py-1.5 rounded cursor-pointer text-sm font-bold shadow-sm border border-transparent ${day.id === currentDayId ? 'active border-blue-900 bg-blue-900 text-white' : 'hover:bg-blue-200'}`;
+                btn.innerHTML = `<span onclick="changeDay('${day.id}')">${day.title} <span class="font-normal text-xs">(${day.date.split('-').reverse().slice(0,2).join('/')})</span></span><button onclick="deleteDay('${day.id}')" class="ml-1 opacity-60 hover:opacity-100 hover:text-red-500">&times;</button>`;
+                container.appendChild(btn);
+            });
+            const addBtn = document.createElement('button'); addBtn.className = 'bg-white text-blue-900 px-3 py-1.5 rounded border-dashed border-2 border-blue-300 hover:bg-blue-50 font-bold';
+            addBtn.innerHTML = '<i class="fa-solid fa-plus"></i>'; addBtn.onclick = () => { document.getElementById('addDayModal').classList.add('active'); };
+            container.appendChild(addBtn);
+            
+            let day = getCurrentDayData();
+            if(day) {
+                if (document.getElementById('day-start-time')) document.getElementById('day-start-time').value = minsToTime(day.startTime || 480);
+                if (document.getElementById('max-pistes')) document.getElementById('max-pistes').value = day.maxPistes !== undefined ? day.maxPistes : 10;
+                if (document.getElementById('max-pistes-nv')) document.getElementById('max-pistes-nv').value = day.maxPistesNV !== undefined ? day.maxPistesNV : 0;
+                if (document.getElementById('max-pistes-car')) document.getElementById('max-pistes-car').value = day.maxPistesCar !== undefined ? day.maxPistesCar : 0;
+                if (document.getElementById('ref-spada')) document.getElementById('ref-spada').value = day.refs?.spada !== undefined ? day.refs?.spada : 10;
+                if (document.getElementById('ref-fioretto')) document.getElementById('ref-fioretto').value = day.refs?.fioretto !== undefined ? day.refs?.fioretto : 10;
+                if (document.getElementById('ref-sciabola')) document.getElementById('ref-sciabola').value = day.refs?.sciabola !== undefined ? day.refs?.sciabola : 10;
+                if (document.getElementById('ref-nv')) document.getElementById('ref-nv').value = day.refs?.nv !== undefined ? day.refs?.nv : 2;
+                if (document.getElementById('ref-car')) document.getElementById('ref-car').value = day.refs?.car !== undefined ? day.refs?.car : 2;
+            }
+            let pasteBtn = document.getElementById('btn-paste-internal');
+            if(pasteBtn) pasteBtn.classList.toggle('hidden', internalClipboard.length === 0);
+        }
+
+        function renderHeaderGrid() {
+            const header = document.getElementById('timeline-header');
+            header.innerHTML = '<div class="cat-label-header flex items-center justify-between font-bold text-[10px] text-gray-500 uppercase tracking-wider px-2"><i class="fa-solid fa-list-check"></i> Categoria <span class="mx-auto">\u23FA Orario</span></div>';
+            let day = getCurrentDayData(); if (!day) return;
+            let bounds = calculateDayBounds(day);
+
+            let cols = ['260px'];
+            for (let m = bounds.start; m < bounds.end; m += timeStep) {
+                let isHidden = (day.hiddenCols || []).includes(m);
+                cols.push(isHidden ? '16px' : '40px');
+                
+                const div = document.createElement('div'); 
+                div.className = 'timeline-header-cell flex items-center justify-center';
+                div.onclick = () => toggleCol(m);
+                div.title = `Nascondi/Mostra ${minsToTime(m)}`;
+                
+                if (isHidden) {
+                    div.innerHTML = '<i class="fa-solid fa-expand text-[8px] opacity-50"></i>';
+                    div.style.backgroundColor = '#f1f5f9';
+                } else {
+                    div.innerHTML = m % 60 === 0 ? `<span class="bg-gray-200 px-1.5 py-0.5 rounded shadow-sm text-blue-900">${minsToTime(m)}</span>` : minsToTime(m);
+                }
+                header.appendChild(div);
+            }
+            document.documentElement.style.setProperty('--grid-cols', cols.join(' '));
+
+            const gl = document.getElementById('grid-lines'); gl.innerHTML = '';
+            for (let m = bounds.start; m < bounds.end; m += timeStep) {
+                let isHidden = (day.hiddenCols || []).includes(m);
+                const l = document.createElement('div'); 
+                l.className = `grid-line ${m % 60 === 0 ? 'hour-mark' : ''}`;
+                l.style.width = isHidden ? '16px' : '40px';
+                if(isHidden) l.style.backgroundColor = '#f8fafc';
+                gl.appendChild(l); 
+            }
+        }
+
+        function renderDay() {
+            const body = document.getElementById('timeline-body');
+            body.innerHTML = document.getElementById('grid-lines').outerHTML;
+            const day = getCurrentDayData(); if (!day) return;
+            let bounds = calculateDayBounds(day);
+            let colorMode = document.getElementById('colorModeSelect')?.value || 'row';
+            
+            day.categories.forEach((cat, index) => {
+                const row = document.createElement('div'); row.className = `timeline-grid timeline-row ${cat.selected ? 'selected' : ''}`;
+                row.setAttribute('data-cat-id', cat.id); row.dataset.index = index;
+                
+                const label = document.createElement('div'); label.className = 'cat-label group'; label.draggable = true;
+                label.dataset.index = index; label.addEventListener('dragstart', handleRowDragStart);
+                
+                let iconSector = '';
+                if(cat.sector === 'nv') iconSector = ' <i class="fa-solid fa-eye-slash text-yellow-600" title="Non Vedenti"></i>';
+                else if(cat.sector === 'car') iconSector = ' <i class="fa-solid fa-wheelchair text-purple-600" title="Carrozzina"></i>';
+                else if(cat.format.includes('squadre')) iconSector = ' <i class="fa-solid fa-users text-gray-400" title="Squadre"></i>';
+
+                let catStartMins = cat.blocks.length > 0 ? Math.min(...cat.blocks.map(b => b.startMins)) : bounds.start;
+                let startTimeStr = minsToTime(catStartMins);
+                
+                label.innerHTML = `
+                    <div class="flex items-center gap-2">
+                        <input type="checkbox" class="custom-cb" ${cat.selected?'checked':''} onclick="event.stopPropagation(); toggleSelection('${cat.id}')">
+                        <button class="cat-action-btn btn-edit ${activeCatActions === cat.id ? 'show' : ''}" onclick="event.stopPropagation(); openEditCategory('${cat.id}')"><i class="fa-solid fa-pen"></i></button>
+                    </div>
+                    <div class="flex-1 text-center" onclick="activeCatActions = activeCatActions === '${cat.id}' ? null : '${cat.id}'; renderDay();">
+                        <div class="font-bold text-xs"><span class="text-blue-800 bg-blue-100 border border-blue-200 px-1 rounded mr-1">${startTimeStr}</span>${cat.name}${iconSector} <span class="text-blue-600 font-black ml-1">${cat.athletes||0}</span></div>
+                        <div class="text-[9px] uppercase text-gray-500 font-bold tracking-widest">${cat.weapon}</div>
+                    </div>
+                    <button class="cat-action-btn btn-delete ${activeCatActions === cat.id ? 'show' : ''}" onclick="event.stopPropagation(); deleteCategory('${cat.id}')"><i class="fa-solid fa-trash"></i></button>`;
+                row.appendChild(label);
+                
+                // Empty cells for the grid
+                for (let m = bounds.start; m < bounds.end; m += timeStep) {
+                    row.appendChild(document.createElement('div'));
+                }
+                
+                cat.blocks.forEach(blk => {
+                    let blkLabel = blk.type === 'gironi' ? `${blk.count} Gir` : `${blk.count} Ass`;
+                    const bDiv = document.createElement('div');
+                    bDiv.className = `task-block timeline-task-block ${colorMode==='row' ? 'bg-row-'+(index%8) : 'bg-'+cat.weapon}`;
+                    bDiv.id = blk.id; bDiv.setAttribute('data-cat-id', cat.id);
+                    
+                    bDiv.style.left = `${260 + getColOffset(day, blk.startMins, bounds)}px`;
+                    bDiv.style.width = `${getColWidth(day, blk.startMins, blk.duration)}px`;
+                    
+                    bDiv.setAttribute('data-orig-mins', blk.startMins);
+
+                    bDiv.innerHTML = `
+                        <div class="pistes-badge" onclick="openEditPistes('${cat.id}', '${blk.id}', event)">
+                            <i class="fa-solid ${blk.manualOverride ? 'fa-lock text-red-600' : 'fa-layer-group'} text-[8px] mr-1 opacity-70" title="${blk.manualOverride ? 'Override Manuale Attivo' : ''}"></i>${blk.pistes}
+                        </div>
+                        <span class="task-block-text"><span class="font-black">${blk.name}</span> (${blkLabel})</span>
+                    `;
+                    row.appendChild(bDiv);
+                });
+                body.appendChild(row);
+            });
+            renderCounter(bounds); setupDraggable(); updateBulkActions();
+            persistData(); 
+        }
+
+        function renderPistesView() {
+            const container = document.getElementById('view-pistes');
+            container.innerHTML = '';
+            
+            const day = getCurrentDayData();
+            if (!day) return;
+
+            let bounds = calculateDayBounds(day);
+            let layout = getPistesLayout(day);
+            let totalPistes = layout.length;
+
+            let colorMode = document.getElementById('colorModeSelect')?.value || 'row';
+
+            let wrapper = document.createElement('div');
+            wrapper.className = 'relative min-w-max';
+
+            let headerContainer = document.createElement('div');
+            headerContainer.className = 'sticky top-0 z-40 flex bg-gray-100 border-b-2 border-gray-300';
+            
+            let corner = document.createElement('div');
+            corner.className = 'sticky left-0 z-50 w-[60px] min-w-[60px] bg-gray-200 border-r-2 border-gray-300 flex flex-col items-center justify-center text-[10px] font-bold text-gray-600 tracking-wider';
+            corner.innerHTML = '<span>ORA</span><span class="text-[8px]">PEDANE <i class="fa-solid fa-arrow-right"></i></span>';
+            headerContainer.appendChild(corner);
+
+            layout.forEach(p => {
+                let cell = document.createElement('div');
+                cell.className = `w-[40px] flex-shrink-0 flex items-center justify-center text-[10px] font-black border-r border-gray-300 ${p.textClass}`;
+                cell.innerText = p.isSpecial ? p.name.substring(0,3).toUpperCase() : p.name;
+                cell.title = p.name;
+                if(p.color !== 'transparent') cell.style.backgroundColor = p.color;
+                headerContainer.appendChild(cell);
+            });
+            wrapper.appendChild(headerContainer);
+
+            let bodyContainer = document.createElement('div');
+            bodyContainer.className = 'flex relative';
+
+            let timeCol = document.createElement('div');
+            timeCol.className = 'sticky left-0 z-30 w-[60px] min-w-[60px] bg-gray-50 border-r-2 border-gray-300 flex flex-col';
+            for (let m = bounds.start; m < bounds.end; m += timeStep) {
+                let isHidden = (day.hiddenCols || []).includes(m);
+                let tCell = document.createElement('div');
+                tCell.className = `flex items-center justify-center text-[11px] font-bold border-b border-gray-200 text-gray-500 cursor-pointer hover:bg-gray-100 ${m%60===0 ? 'bg-gray-100' : ''}`;
+                tCell.style.height = isHidden ? '16px' : '40px';
+                tCell.onclick = () => toggleCol(m);
+                tCell.innerHTML = isHidden ? '<i class="fa-solid fa-expand text-[8px] opacity-50"></i>' : minsToTime(m);
+                timeCol.appendChild(tCell);
+            }
+            bodyContainer.appendChild(timeCol);
+
+            let gridArea = document.createElement('div');
+            gridArea.className = 'relative';
+            gridArea.style.width = `${totalPistes * 40}px`;
+            
+            let totalHeight = getColOffset(day, bounds.end, bounds);
+            gridArea.style.height = `${totalHeight}px`;
+
+            // Draw Background Colors for columns
+            let bgLayer = document.createElement('div');
+            bgLayer.className = 'absolute inset-0 z-0 flex pointer-events-none';
+            layout.forEach(p => {
+                let col = document.createElement('div');
+                col.style.width = '40px';
+                col.style.height = '100%';
+                col.style.backgroundColor = p.color;
+                col.style.opacity = p.isSpecial ? '0.5' : '1';
+                col.style.borderRight = '1px dashed #e2e8f0';
+                bgLayer.appendChild(col);
+            });
+            gridArea.appendChild(bgLayer);
+            
+            // Draw horizontal lines dynamically
+            let hLinesLayer = document.createElement('div');
+            hLinesLayer.className = 'absolute inset-0 z-10 pointer-events-none flex flex-col';
+            for(let m = bounds.start; m < bounds.end; m += timeStep) {
+                let isHidden = (day.hiddenCols || []).includes(m);
+                let row = document.createElement('div');
+                row.className = `w-full border-b ${m%60===0 ? 'border-gray-300 border-solid' : 'border-gray-200 border-dashed'}`;
+                row.style.height = isHidden ? '16px' : '40px';
+                if (isHidden) row.style.backgroundColor = 'rgba(0,0,0,0.03)';
+                hLinesLayer.appendChild(row);
+            }
+            gridArea.appendChild(hLinesLayer);
+
+            // Add Drag Highlights
+            let colHighlight = document.createElement('div');
+            colHighlight.id = 'piste-highlight-col';
+            colHighlight.className = 'absolute top-0 bottom-0 z-10 bg-blue-400/30 hidden pointer-events-none border-l-2 border-r-2 border-blue-500';
+            gridArea.appendChild(colHighlight);
+
+            let rowHighlight = document.createElement('div');
+            rowHighlight.id = 'piste-highlight-row';
+            rowHighlight.className = 'absolute left-0 right-0 z-10 bg-blue-400/30 hidden pointer-events-none border-t-2 border-b-2 border-blue-500';
+            gridArea.appendChild(rowHighlight);
+
+            day.categories.forEach((cat, index) => {
+                cat.blocks.forEach(blk => {
+                    let startPiste = blk.startPiste || 0;
+                    let blkLabel = blk.type === 'gironi' ? `${blk.count} Gir` : `${blk.count} Ass`;
+                    let catNameHtml = blk.type === 'gironi' ? `<span class="font-black">${cat.name}</span> ` : '';
+
+                    let bDiv = document.createElement('div');
+                    bDiv.className = `task-block piste-task-block ${colorMode==='row' ? 'bg-row-'+(index%8) : 'bg-'+cat.weapon}`;
+                    bDiv.id = blk.id + '_piste';
+                    bDiv.setAttribute('data-cat-id', cat.id);
+                    bDiv.setAttribute('data-block-id', blk.id);
+
+                    bDiv.style.position = 'absolute';
+                    bDiv.style.left = `${startPiste * 40}px`;
+                    bDiv.style.top = `${getColOffset(day, blk.startMins, bounds)}px`;
+                    bDiv.style.width = `${blk.pistes * 40}px`;
+                    bDiv.style.height = `${getColWidth(day, blk.startMins, blk.duration)}px`;
+                    bDiv.style.zIndex = '20';
+                    
+                    bDiv.setAttribute('data-orig-mins', blk.startMins);
+                    bDiv.setAttribute('data-orig-piste', startPiste);
+
+                    bDiv.innerHTML = `
+                        <div class="pistes-badge" onclick="openEditPistes('${cat.id}', '${blk.id}', event)">
+                            <i class="fa-solid ${blk.manualOverride ? 'fa-lock text-red-600' : 'fa-layer-group'} text-[8px] mr-1"></i>${blk.pistes}
+                        </div>
+                        <span class="task-block-text">${catNameHtml}<span class="opacity-90"><span class="font-black">${blk.name}</span> (${blkLabel})</span></span>
+                    `;
+                    gridArea.appendChild(bDiv);
+                });
+            });
+
+            bodyContainer.appendChild(gridArea);
+            wrapper.appendChild(bodyContainer);
+            container.appendChild(wrapper);
+
+            persistData();
+        }
+
+        function renderCounter(bounds) {
+            const row = document.getElementById('pistes-counter'); row.innerHTML = '<div class="cat-label-footer">Tot. Pedane Usate</div>';
+            const day = getCurrentDayData(); if(!day) return;
+            let layout = getPistesLayout(day);
+            const totalMax = layout.length;
+
+            for (let m = bounds.start; m < bounds.end; m += timeStep) {
+                let isHidden = (day.hiddenCols || []).includes(m);
+                let tot = 0;
+                day.categories.forEach(cat => cat.blocks.forEach(b => { if (b.startMins <= m && (b.startMins + b.duration) > m) tot += parseInt(b.pistes); }));
+                const cell = document.createElement('div'); cell.className = `counter-cell ${tot > totalMax ? 'counter-alert' : (tot === totalMax && tot > 0 ? 'counter-warn' : '')}`;
+                if (isHidden) { cell.style.width = '16px'; cell.innerText = ''; } 
+                else { cell.style.width = '40px'; cell.innerText = tot > 0 ? tot : ''; }
+                row.appendChild(cell);
+            }
+        }
+
+        // --- OVERLAPS & CHRONOLOGY RESOLVER (CASCADE PUSH DOWN) ---
+        function resolveOverlapsAndChronology() {
+            let day = getCurrentDayData();
+            let loops = 0;
+            let changed = true;
+
+            while(changed && loops < 50) {
+                changed = false;
+                loops++;
+
+                // 1. Force strict chronology across all categories
+                day.categories.forEach(cat => {
+                    for (let i = 1; i < cat.blocks.length; i++) {
+                        let b = cat.blocks[i];
+                        let prevB = cat.blocks[i-1];
+                        
+                        // Parallel blocks in the same split group shouldn't push each other chronologically
+                        if (b.splitGroupId && b.splitGroupId === prevB.splitGroupId) continue;
+
+                        let minMins = day.startTime;
+                        if (prevB.splitGroupId) {
+                            let prevGrp = cat.blocks.filter(bx => bx.splitGroupId === prevB.splitGroupId);
+                            let maxEnd = Math.max(...prevGrp.map(bx => bx.startMins + bx.duration));
+                            minMins = maxEnd + (cat.pauseMins || 0);
+                        } else {
+                            minMins = prevB.startMins + prevB.duration + (cat.pauseMins || 0);
+                        }
+
+                        if (b.startMins < minMins) {
+                            let diff = minMins - b.startMins;
+                            b.startMins = minMins;
+                            
+                            // Se spingo un blocco sfasato, spingo l'intero gruppo sfasato
+                            if (b.splitGroupId) {
+                                let bGrp = cat.blocks.filter(bx => bx.splitGroupId === b.splitGroupId);
+                                bGrp.forEach(bx => {
+                                    if(bx.id !== b.id) bx.startMins += diff;
+                                });
+                            }
+                            changed = true;
+                        }
+                    }
+                });
+
+                // 2. Resolve Physical Overlaps (Push Down manually positioned blocks)
+                let manualBlocks = [];
+                day.categories.forEach(c => {
+                    c.blocks.forEach(b => {
+                        if (b.manualOverride) manualBlocks.push({cat: c, blk: b});
+                    });
+                });
+
+                manualBlocks.sort((a, b) => a.blk.startMins - b.blk.startMins);
+
+                for (let i = 0; i < manualBlocks.length; i++) {
+                    let b1 = manualBlocks[i].blk;
+                    for (let j = i + 1; j < manualBlocks.length; j++) {
+                        let b2 = manualBlocks[j].blk;
+                        let cat2 = manualBlocks[j].cat;
+                        
+                        let b1End = b1.startMins + b1.duration;
+                        let b1PisteEnd = (b1.startPiste || 0) + b1.pistes;
+
+                        let b2End = b2.startMins + b2.duration;
+                        let b2PisteEnd = (b2.startPiste || 0) + b2.pistes;
+
+                        if (Math.max(b1.startMins, b2.startMins) < Math.min(b1End, b2End) && 
+                            Math.max(b1.startPiste || 0, b2.startPiste || 0) < Math.min(b1PisteEnd, b2PisteEnd)) {
+                            
+                            let diff = b1End - b2.startMins;
+                            b2.startMins = b1End; 
+                            
+                            // Propaga lo scivolamento agli altri pezzi dello stesso gruppo splittato per allinearli se serve
+                            if (b2.splitGroupId) {
+                                let bGrp = cat2.blocks.filter(bx => bx.splitGroupId === b2.splitGroupId);
+                                bGrp.forEach(bx => {
+                                    if(bx.id !== b2.id) bx.startMins += diff;
+                                });
+                            }
+                            changed = true;
+                        }
+                    }
+                }
+            }
+            
+            // Sicurezza finale: Nessuno sfora oltre mezzanotte (1440)
+            day.categories.forEach(cat => {
+                cat.blocks.forEach(b => {
+                    if (b.startMins + b.duration > 1440) {
+                        b.startMins = 1440 - b.duration;
+                        if(b.startMins < day.startTime) b.startMins = day.startTime;
+                    }
+                });
+            });
+        }
+
+        // --- REFINED SCHEDULING ALGORITHM ---
+        function autoSchedule() {
+            try {
+                const day = getCurrentDayData(); if(!day) return;
+                const maxPStd = parseInt(document.getElementById('max-pistes')?.value) || day.maxPistes || 10;
+                const maxPNV = parseInt(document.getElementById('max-pistes-nv')?.value) || day.maxPistesNV || 0;
+                const maxPCar = parseInt(document.getElementById('max-pistes-car')?.value) || day.maxPistesCar || 0;
+                
+                let numSpecial = day.specialPistes ? day.specialPistes.length : 0;
+                let layout = getPistesLayout(day);
+                const totalPistes = layout.length;
+                
+                const refs = { 
+                    spada: parseInt(document.getElementById('ref-spada')?.value) || day.refs?.spada || 10, 
+                    fioretto: parseInt(document.getElementById('ref-fioretto')?.value) || day.refs?.fioretto || 10, 
+                    sciabola: parseInt(document.getElementById('ref-sciabola')?.value) || day.refs?.sciabola || 10,
+                    nv: parseInt(document.getElementById('ref-nv')?.value) || day.refs?.nv || 2,
+                    car: parseInt(document.getElementById('ref-car')?.value) || day.refs?.car || 2
+                };
+                
+                let maxMins = 1440;
+                let pisteUsage = Array.from({length: maxMins}, () => new Array(totalPistes).fill(false));
+                let wUsage = { spada:new Array(maxMins).fill(0), fioretto:new Array(maxMins).fill(0), sciabola:new Array(maxMins).fill(0), nv:new Array(maxMins).fill(0), car:new Array(maxMins).fill(0) };
+                
+                // Traccia i blocchi manuali per non sovrascriverli
+                day.categories.forEach(cat => {
+                    cat.blocks.forEach(b => {
+                        if (b.manualOverride) {
+                            let sS_mins = Math.max(0, b.startMins);
+                            let sP = b.startPiste || 0;
+                            sP = Math.max(0, Math.min(sP, totalPistes - b.pistes));
+
+                            for (let tMins = sS_mins; tMins < sS_mins + b.duration && tMins < maxMins; tMins += timeStep) {
+                                for (let p = sP; p < sP + b.pistes && p < totalPistes; p++) { pisteUsage[tMins][p] = true; }
+                                let sector = cat.sector || 'olimpico';
+                                if (sector === 'car') wUsage.car[tMins] += b.pistes;
+                                else if (sector === 'nv') wUsage.nv[tMins] += b.pistes;
+                                else wUsage[cat.weapon][tMins] += b.pistes;
+                            }
+                        }
+                    });
+                });
+
+                let sortedCats = [...day.categories].sort((a,b) => {
+                    if (a.sector !== 'olimpico' && b.sector === 'olimpico') return -1;
+                    if (a.sector === 'olimpico' && b.sector !== 'olimpico') return 1;
+                    let aStart = a.blocks.length ? a.blocks[0].startMins : 0;
+                    let bStart = b.blocks.length ? b.blocks[0].startMins : 0;
+                    return aStart - bStart;
+                });
+
+                sortedCats.forEach(cat => {
+                    let initialStart = cat.blocks.length > 0 ? cat.blocks[0].startMins : day.startTime;
+                    let curM = Math.max(day.startTime, initialStart);
+                    let sector = cat.sector || 'olimpico';
+                    
+                    cat.blocks.forEach((b, i) => {
+                        let minMins = day.startTime;
+                        if (i > 0) {
+                            let prevB = cat.blocks[i-1];
+                            if (b.splitGroupId && b.splitGroupId === prevB.splitGroupId) {
+                                let firstGrp = cat.blocks.find(bx => bx.splitGroupId === b.splitGroupId);
+                                minMins = firstGrp.startMins;
+                            } else {
+                                if (prevB.splitGroupId) {
+                                    let prevGrp = cat.blocks.filter(bx => bx.splitGroupId === prevB.splitGroupId);
+                                    let maxEnd = Math.max(...prevGrp.map(bx => bx.startMins + bx.duration));
+                                    minMins = maxEnd + (cat.pauseMins || 0);
+                                } else {
+                                    minMins = prevB.startMins + prevB.duration + (cat.pauseMins || 0);
+                                }
+                            }
+                        }
+
+                        if (b.manualOverride) {
+                            if (b.startMins < minMins) b.startMins = minMins; // Chronology force
+                            curM = Math.max(curM, b.startMins + b.duration + (cat.pauseMins || 0));
+                            return; 
+                        }
+
+                        let actualMaxPistes = 1, actualMaxRefs = 1;
+                        let validPisteStart = 0, validPisteEnd = totalPistes - 1;
+                        
+                        if (sector === 'car') {
+                            actualMaxPistes = Math.max(1, maxPCar); actualMaxRefs = Math.max(1, refs.car);
+                            validPisteStart = numSpecial + maxPStd + maxPNV; validPisteEnd = totalPistes - 1;
+                        } else if (sector === 'nv') {
+                            actualMaxPistes = Math.max(1, maxPNV); actualMaxRefs = Math.max(1, refs.nv);
+                            validPisteStart = numSpecial + maxPStd; validPisteEnd = numSpecial + maxPStd + maxPNV - 1;
+                        } else {
+                            actualMaxPistes = Math.max(1, maxPStd + maxPNV); actualMaxRefs = Math.max(1, refs[cat.weapon]);
+                            validPisteStart = numSpecial; validPisteEnd = numSpecial + maxPStd + maxPNV - 1;
+                        }
+                        let maxAvail = Math.min(actualMaxPistes, actualMaxRefs);
+                        
+                        let idealPistes = b.type === 'gironi' ? Math.ceil((cat.athletes || 1) / (b.pool_size || 7)) : b.count;
+                        if (b.name === "Finale" || b.name.includes("Final")) idealPistes = Math.min(idealPistes, 1);
+                        else if (b.name === "Semifinali" || b.name.includes("Semi")) idealPistes = Math.min(idealPistes, 2);
+                        else if (b.type === 'ed') idealPistes = Math.min(idealPistes, 8);
+                        
+                        if (cat.format.includes('squadre')) {
+                            if (b.type === 'gironi') {
+                                if (cat.athletes >= 3 && cat.athletes <= 5) idealPistes = cat.athletes >= 4 ? 2 : 1;
+                                else {
+                                    let tp = Math.ceil(cat.athletes / 4);
+                                    if(tp > 0) {
+                                        let bs = Math.floor(cat.athletes / tp); let r = cat.athletes % tp;
+                                        let numPoolsOf4 = (bs === 4) ? tp : r; let numPoolsOf3 = (bs === 4) ? 0 : (tp - r);
+                                        idealPistes = (numPoolsOf4 * 2) + (numPoolsOf3 * 1);
+                                    }
+                                }
+                            }
+                        } else if (cat.format === 'caf') {
+                            idealPistes = Math.floor((cat.athletes || 1) / 2);
+                        }
+                        
+                        b.pistes = Math.max(1, Math.min(idealPistes, maxAvail, b.count));
+                        b.duration = getBlockDuration(cat.weapon, b.type, b.count, b.pistes, b.pool_size || 7, cat.format);
+                        
+                        let tryStart = Math.max(curM, minMins);
+                        if (b.splitGroupId && i > 0 && b.splitGroupId === cat.blocks[i-1].splitGroupId) {
+                            tryStart = cat.blocks.find(bx => bx.splitGroupId === b.splitGroupId).startMins;
+                        }
+
+                        let foundT = -1, foundP = -1;
+                        let sS_mins = Math.max(0, tryStart);
+                        
+                        for (let tMins = sS_mins; tMins <= maxMins - b.duration; tMins += timeStep) {
+                            let refOk = true;
+                            for (let dMins = 0; dMins < b.duration; dMins += timeStep) {
+                                let m = tMins + dMins;
+                                let refCount = sector === 'car' ? wUsage.car[m] : (sector === 'nv' ? wUsage.nv[m] : wUsage[cat.weapon][m]);
+                                if (refCount + b.pistes > actualMaxRefs) { refOk = false; break; }
+                            }
+                            if (!refOk) continue;
+
+                            for (let pStart = validPisteStart; pStart <= validPisteEnd - b.pistes + 1; pStart++) {
+                                let spaceOk = true;
+                                for (let dMins = 0; dMins < b.duration; dMins += timeStep) {
+                                    let m = tMins + dMins;
+                                    for (let p = 0; p < b.pistes; p++) {
+                                        if (pisteUsage[m][pStart+p]) { spaceOk = false; break; }
+                                    }
+                                    if (!spaceOk) break;
+                                }
+                                if (spaceOk) { foundT = tMins; foundP = pStart; break; }
+                            }
+                            if (foundT !== -1) break;
+                        }
+                        
+                        if(foundT !== -1) {
+                            b.startMins = foundT;
+                            b.startPiste = foundP;
+                            for (let dMins = 0; dMins < b.duration; dMins += timeStep) {
+                                let m = foundT + dMins;
+                                for (let p = 0; p < b.pistes; p++) pisteUsage[m][foundP+p] = true;
+                                if (sector === 'car') wUsage.car[m] += b.pistes;
+                                else if (sector === 'nv') wUsage.nv[m] += b.pistes;
+                                else wUsage[cat.weapon][m] += b.pistes;
+                            }
+                            
+                            if (!b.splitGroupId) {
+                                curM = b.startMins + b.duration + (cat.pauseMins || 0);
+                            }
+                        } else { 
+                            b.startMins = tryStart; b.startPiste = validPisteStart; 
+                            if (!b.splitGroupId) curM = b.startMins + b.duration + (cat.pauseMins || 0);
+                        }
+                    });
+                });
+                refreshCurrentView();
+            } catch (e) { console.error("AutoSchedule Error:", e); customAlert("Errore durante l'organizzazione. Verifica coerenza dati."); refreshCurrentView(); }
+        }
+
+        // --- UI ACTIONS & MODALS ---
+        function showConfirm(title, msg, cb) { document.getElementById('confirmModalTitle').innerText = title; document.getElementById('confirmModalMsg').innerText = msg; confirmActionCallback = cb; document.getElementById('confirmModal').classList.add('active'); }
+        function executeConfirm() { if(confirmActionCallback) confirmActionCallback(); closeModal('confirmModal'); persistData(); }
+        function customAlert(m) { document.getElementById('alertModalMsg').innerText=m; document.getElementById('alertModal').classList.add('active'); }
+        function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+        
+        function changeDay(id) { currentDayId = id; renderTabs(); refreshCurrentView(); }
+        
+        function deleteDay(id) { 
+            showConfirm("Elimina Giornata", "Eliminare l'intero giorno e le sue categorie?", () => { 
+                saveState();
+                database = database.filter(d=>d.id!==id); 
+                if(database.length > 0) { currentDayId=database[0].id; } 
+                else { database.push({ id:'day_1', title:'Sabato', date:getNextSaturday(), startTime:510, maxPistes: 10, maxPistesNV: 0, maxPistesCar: 0, refs: {spada: 10, fioretto: 10, sciabola: 10, nv: 2, car: 2}, categories:[] }); currentDayId = 'day_1'; } 
+                renderTabs(); refreshCurrentView(); 
+            }); 
+        }
+        
+        function clearCurrentDay() { 
+            showConfirm("Svuota Giornata", "Eliminare tutte le categorie da questo giorno?", () => { 
+                saveState();
+                getCurrentDayData().categories=[]; refreshCurrentView(); 
+            }); 
+        }
+        
+        function updateDaySettings() {
+            let day = getCurrentDayData(); if(!day) return;
+            let t = document.getElementById('day-start-time')?.value;
+            if(t) { let [h,m] = t.split(':'), mins = parseInt(h)*60+parseInt(m), diff = mins - day.startTime; day.startTime = mins; day.categories.forEach(c => c.blocks.forEach(b => b.startMins = Math.max(0, b.startMins + diff))); }
+            const getVal = (id, fb) => { const e=document.getElementById(id); return e && e.value !== '' ? parseInt(e.value) : fb; };
+            day.maxPistes = getVal('max-pistes', 10); day.maxPistesNV = getVal('max-pistes-nv', 0); day.maxPistesCar = getVal('max-pistes-car', 0);
+            day.refs = { spada: getVal('ref-spada', 10), fioretto: getVal('ref-fioretto', 10), sciabola: getVal('ref-sciabola', 10), nv: getVal('ref-nv', 2), car: getVal('ref-car', 2) };
+            autoSchedule();
+        }
+        
+        function saveDay() { 
+            let n = document.getElementById('newDayName')?.value||"Giorno", d = document.getElementById('newDayDate')?.value||new Date().toISOString().split('T')[0]; 
+            let tStr = document.getElementById('newDayStartTime')?.value||"08:30"; let [h,m] = tStr.split(':'); 
+            let cDay = getCurrentDayData();
+            saveState();
+            database.push({ 
+                id:'day'+Date.now(), title:n, date:d, startTime:parseInt(h)*60+parseInt(m), categories:[],
+                maxPistes: cDay ? cDay.maxPistes : 10, maxPistesNV: cDay ? cDay.maxPistesNV : 0, maxPistesCar: cDay ? cDay.maxPistesCar : 0,
+                refs: cDay ? {...cDay.refs} : {spada:10, fioretto:10, sciabola:10, nv:2, car:2}
+            }); 
+            closeModal('addDayModal'); currentDayId = database[database.length-1].id; renderTabs(); refreshCurrentView(); 
+        }
+        function autoFillDayName() { let dV = document.getElementById('newDayDate')?.value; if(!dV) return; let [y,m,d] = dV.split('-'); let date = new Date(y, m-1, d); const nomi = ['Domenica','Lunedì','Martedì','Mercoledì','Giovedì','Venerdì','Sabato']; if(document.getElementById('newDayName')) document.getElementById('newDayName').value = nomi[date.getDay()]; }
+
+        // Category Modals (Add / Edit / Regenerate)
+        function openAddModal() {
+            editingCatId = null;
+            document.getElementById('addModalTitle').innerText = "Aggiungi Categoria";
+            document.getElementById('addModalBtnText').innerText = "Aggiungi";
+            document.getElementById('newCatName').value = ""; document.getElementById('newCatAthletes').value = ""; document.getElementById('newCatPass').value = "";
+            document.getElementById('newCatSector').value = "olimpico"; document.getElementById('newCatWeapon').value = "spada"; document.getElementById('newCatFormat').value = "girone_diretta";
+            document.getElementById('newCatPoolSize').value = "7"; document.getElementById('newCatPause').value = "0";
+            document.getElementById('btnRegenerateCat').classList.add('hidden');
+            handleSectorChange(); updateAddModalStats();
+            document.getElementById('addModal').classList.add('active');
+        }
+
+        function openEditCategory(catId) {
+            editingCatId = catId;
+            let cat = getCurrentDayData().categories.find(c => c.id === catId); if(!cat) return;
+            document.getElementById('addModalTitle').innerText = "Modifica Categoria";
+            document.getElementById('addModalBtnText').innerText = "Salva";
+            document.getElementById('newCatName').value = cat.name; document.getElementById('newCatAthletes').value = cat.athletes; document.getElementById('newCatPass').value = cat.passCount;
+            document.getElementById('newCatSector').value = cat.sector || 'olimpico'; document.getElementById('newCatWeapon').value = cat.weapon; document.getElementById('newCatFormat').value = cat.format;
+            document.getElementById('newCatPoolSize').value = cat.poolSize || 7; document.getElementById('newCatPause').value = cat.pauseMins || 0;
+            document.getElementById('btnRegenerateCat').classList.remove('hidden');
+            handleSectorChange(); updateAddModalStats();
+            document.getElementById('addModal').classList.add('active');
+        }
+
+        function regenerateCategory() {
+            if (!editingCatId) return;
+            saveState();
+            let day = getCurrentDayData();
+            let cat = day.categories.find(c => c.id === editingCatId);
+            if(cat) {
+                cat.name = document.getElementById('newCatName').value;
+                cat.sector = document.getElementById('newCatSector').value;
+                cat.weapon = document.getElementById('newCatWeapon').value;
+                cat.format = document.getElementById('newCatFormat').value;
+                cat.athletes = parseInt(document.getElementById('newCatAthletes').value) || 0;
+                cat.passCount = parseInt(document.getElementById('newCatPass').value) || 0;
+                cat.poolSize = parseInt(document.getElementById('newCatPoolSize').value) || 7;
+                cat.pauseMins = parseInt(document.getElementById('newCatPause').value) || 0;
+
+                let activePS = (cat.format === 'caf' || cat.format.includes('squadre')) ? cat.athletes : (cat.poolSize || 7);
+                cat.blocks = generateBlocks(cat.weapon, cat.format, cat.athletes, cat.passCount, activePS, day.startTime, cat.sector);
+            }
+            closeModal('addModal');
+            autoSchedule();
+            customAlert("Categoria rigenerata, lucchetti rimossi e calcoli ripristinati.");
+        }
+
+        function handleSectorChange() {
+            let s = document.getElementById('newCatSector').value;
+            let w = document.getElementById('newCatWeapon');
+            if (s === 'nv') { w.value = 'spada'; w.disabled = true; w.classList.add('opacity-50'); } else { w.disabled = false; w.classList.remove('opacity-50'); }
+        }
+
+        function updateAddModalStats() {
+            let f = document.getElementById('newCatFormat').value; let a = parseInt(document.getElementById('newCatAthletes').value) || 0; let p = parseInt(document.getElementById('newCatPoolSize').value) || 7;
+            let txt = "";
+            if (f === 'girone_diretta' || f.includes('doppia')) txt = `${Math.ceil(a/p)} Gironi totali.`;
+            else if (f === 'caf') txt = `Mega-girone da ${a} atleti.`;
+            else if (f.includes('squadre')) txt = `${a} Squadre Iscritte.`;
+            document.getElementById('poolBreakdownText').innerText = txt;
+        }
+
+        function saveCategory() {
+            let day = getCurrentDayData();
+            let name = document.getElementById('newCatName').value;
+            if(!name) { alert("Inserisci un nome"); return; }
+            saveState();
+            let sector = document.getElementById('newCatSector').value, weapon = document.getElementById('newCatWeapon').value, format = document.getElementById('newCatFormat').value;
+            let athletes = parseInt(document.getElementById('newCatAthletes').value) || 0, passCount = parseInt(document.getElementById('newCatPass').value) || 0, poolSize = parseInt(document.getElementById('newCatPoolSize').value) || 7;
+            let pauseMins = parseInt(document.getElementById('newCatPause').value) || 0;
+
+            if (editingCatId) {
+                let cat = day.categories.find(c => c.id === editingCatId);
+                if (cat) {
+                    cat.name = name; cat.sector = sector; cat.weapon = weapon; cat.format = format; cat.athletes = athletes; cat.passCount = passCount; cat.poolSize = poolSize; cat.pauseMins = pauseMins;
+                    // Mantiene blocchi intatti e override, cambia solo attributi o genera nuovi se non ci sono
+                    if(cat.blocks.length === 0) {
+                        cat.blocks = generateBlocks(weapon, format, athletes, passCount, poolSize, day.startTime, sector);
+                    }
+                }
+            } else {
+                let cat = { id: generateId('cat'), name, weapon, format, sector, athletes, passCount, poolSize, pauseMins, selected: false };
+                cat.blocks = generateBlocks(weapon, format, athletes, passCount, poolSize, day.startTime, sector);
+                day.categories.push(cat);
+            }
+            closeModal('addModal'); autoSchedule();
+        }
+
+        function deleteCategory(catId) {
+            showConfirm("Elimina Categoria", "Vuoi davvero eliminare questa categoria?", () => { saveState(); let day = getCurrentDayData(); day.categories = day.categories.filter(c => c.id !== catId); refreshCurrentView(); });
+        }
+
+        // Block Edits & Splitting & Reuniting & Locking
+        function openEditPistes(catId, blockId, event) {
+            event.stopPropagation();
+            let cat = getCurrentDayData().categories.find(c => c.id === catId); let blk = cat.blocks.find(b => b.id === blockId);
+            currentEditBlock = { cat, blk };
+            
+            let pisteInput = document.getElementById('editPistesInput');
+            pisteInput.value = blk.pistes;
+            pisteInput.max = blk.count; 
+            
+            pisteInput.oninput = function() {
+                if (parseInt(this.value) > blk.count) this.value = blk.count;
+                if (parseInt(this.value) < 1) this.value = 1;
+                updateEditPreview();
+            };
+
+            document.getElementById('editDurationManual').value = blk.duration;
+            if(blk.type === 'gironi') { document.getElementById('editGironeConfig').style.display = 'block'; document.getElementById('editPoolSizeInput').value = blk.pool_size || 7; }
+            else { document.getElementById('editGironeConfig').style.display = 'none'; }
+            
+            if (blk.splitGroupId) {
+                document.getElementById('editEdConfig').style.display = 'none';
+                document.getElementById('reuniteEdConfig').style.display = 'block';
+            } else if(blk.type === 'ed' && blk.count > 1) {
+                document.getElementById('editEdConfig').style.display = 'block';
+                document.getElementById('reuniteEdConfig').style.display = 'none';
+            } else {
+                document.getElementById('editEdConfig').style.display = 'none';
+                document.getElementById('reuniteEdConfig').style.display = 'none';
+            }
+            
+            let btnLock = document.getElementById('btnToggleLock');
+            if (blk.manualOverride) {
+                btnLock.innerHTML = '<i class="fa-solid fa-lock-open"></i> Sblocca Fase (Torna Auto)';
+                btnLock.className = 'w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2 rounded shadow text-xs transition-colors mb-2';
+            } else {
+                btnLock.innerHTML = '<i class="fa-solid fa-lock"></i> Blocca Fase (Fissa Posizione)';
+                btnLock.className = 'w-full bg-red-500 hover:bg-red-600 text-white font-bold py-2 rounded shadow text-xs transition-colors mb-2';
+            }
+            
+            document.getElementById('editModalDesc').innerText = `${cat.name} - ${blk.name}`;
+            document.getElementById('editModal').classList.add('active');
+        }
+
+        function toggleBlockLock() {
+            if(!currentEditBlock) return;
+            saveState();
+            let { blk } = currentEditBlock;
+            blk.manualOverride = !blk.manualOverride;
+            closeModal('editModal');
+            autoSchedule();
+        }
+
+        function updateEditPreview() {
+            if(!currentEditBlock) return;
+            let { cat, blk } = currentEditBlock;
+            let p = parseInt(document.getElementById('editPistesInput').value) || 1;
+            let ps = parseInt(document.getElementById('editPoolSizeInput').value) || 7;
+            document.getElementById('editDurationManual').value = getBlockDuration(cat.weapon, blk.type, blk.count, p, ps, cat.format);
+        }
+
+        function savePistes() {
+            if(!currentEditBlock) return;
+            saveState();
+            let { blk } = currentEditBlock;
+            blk.pistes = Math.min(parseInt(document.getElementById('editPistesInput').value) || 1, blk.count);
+            if(blk.type === 'gironi') blk.pool_size = parseInt(document.getElementById('editPoolSizeInput').value) || 7;
+            blk.duration = Math.max(timeStep, Math.ceil((parseInt(document.getElementById('editDurationManual').value) || 15) / timeStep) * timeStep);
+            blk.manualOverride = true; 
+            closeModal('editModal'); autoSchedule();
+        }
+
+        function splitEdBlock() {
+            if(!currentEditBlock) return;
+            
+            let { cat, blk } = currentEditBlock;
+            let day = getCurrentDayData();
+
+            let defaultBouts = 1;
+            let boutsPerGroup = prompt(`Questa fase ha ${blk.count} assalti in totale.\nQuanti assalti consecutivi vuoi assegnare per ogni singola pedana?`, defaultBouts);
+            
+            if (boutsPerGroup === null) return; 
+            boutsPerGroup = parseInt(boutsPerGroup);
+            if (isNaN(boutsPerGroup) || boutsPerGroup < 1) {
+                customAlert("Numero non valido.");
+                return;
+            }
+
+            saveState(); 
+            let bIdx = cat.blocks.findIndex(b => b.id === blk.id);
+            let newBlocks = [];
+            
+            let numSpecial = day.specialPistes ? day.specialPistes.length : 0;
+            const maxPStd = parseInt(document.getElementById('max-pistes')?.value) || day.maxPistes || 10;
+            const maxPNV = parseInt(document.getElementById('max-pistes-nv')?.value) || day.maxPistesNV || 0;
+            let layout = getPistesLayout(day);
+            const totalPistes = layout.length;
+
+            let validPisteStart = 0;
+            let validPisteEnd = totalPistes - 1;
+            
+            if (cat.sector === 'car') {
+                validPisteStart = numSpecial + maxPStd + maxPNV;
+            } else if (cat.sector === 'nv') {
+                validPisteStart = numSpecial + maxPStd;
+                validPisteEnd = numSpecial + maxPStd + maxPNV - 1;
+            } else {
+                validPisteStart = numSpecial;
+                validPisteEnd = numSpecial + maxPStd - 1;
+            }
+
+            let remainingBouts = blk.count;
+            let splitGroupId = blk.splitGroupId || blk.id; 
+            let originalCount = blk.originalCount || blk.count;
+
+            let currentMins = blk.startMins;
+            let currentPiste = blk.startPiste !== undefined ? blk.startPiste : validPisteStart;
+            
+            if (currentPiste < validPisteStart || currentPiste > validPisteEnd) currentPiste = validPisteStart; 
+
+            let standardD = getBlockDuration(cat.weapon, 'ed', boutsPerGroup, 1, 2, cat.format);
+
+            while(remainingBouts > 0) {
+                let boutsInThisBlock = Math.min(remainingBouts, boutsPerGroup);
+                let d = getBlockDuration(cat.weapon, 'ed', boutsInThisBlock, 1, 2, cat.format);
+                
+                if (currentPiste > validPisteEnd) {
+                    currentPiste = validPisteStart;
+                    currentMins += standardD;
+                }
+
+                let newB = {
+                    id: generateId('b'),
+                    name: blk.name, 
+                    type: 'ed',
+                    count: boutsInThisBlock,
+                    pool_size: 2,
+                    duration: d,
+                    pistes: 1,
+                    startMins: currentMins, 
+                    startPiste: currentPiste, 
+                    manualOverride: true, 
+                    splitGroupId: splitGroupId,
+                    originalCount: originalCount
+                };
+                newBlocks.push(newB);
+                
+                remainingBouts -= boutsInThisBlock;
+                currentPiste++;
+            }
+            
+            cat.blocks.splice(bIdx, 1, ...newBlocks);
+            
+            resolveOverlapsAndChronology();
+
+            closeModal('editModal');
+            autoSchedule();
+        }
+
+        function reuniteEdBlock() {
+            if(!currentEditBlock) return;
+            saveState();
+            let { cat, blk } = currentEditBlock;
+            let groupId = blk.splitGroupId;
+            if(!groupId) return;
+
+            let splitBlocks = cat.blocks.filter(b => b.splitGroupId === groupId);
+            if(splitBlocks.length === 0) return;
+
+            splitBlocks.sort((a, b) => a.startMins - b.startMins || a.startPiste - b.startPiste);
+            let firstBlock = splitBlocks[0];
+            
+            let totalCount = blk.originalCount || splitBlocks.reduce((sum, b) => sum + b.count, 0);
+            
+            let idealPistes = totalCount;
+            if (blk.name === "Finale" || blk.name.includes("Final")) idealPistes = Math.min(idealPistes, 1);
+            else if (blk.name === "Semifinali" || blk.name.includes("Semi")) idealPistes = Math.min(idealPistes, 2);
+            else idealPistes = Math.min(idealPistes, 8);
+
+            let d = getBlockDuration(cat.weapon, 'ed', totalCount, idealPistes, 2, cat.format);
+            
+            let newBlock = {
+                id: groupId, 
+                name: blk.name,
+                type: 'ed',
+                count: totalCount,
+                pool_size: 2,
+                duration: d,
+                pistes: idealPistes,
+                startMins: firstBlock.startMins,
+                startPiste: firstBlock.startPiste,
+                manualOverride: false 
+            };
+            
+            let firstIndex = cat.blocks.findIndex(b => b.splitGroupId === groupId);
+            cat.blocks = cat.blocks.filter(b => b.splitGroupId !== groupId);
+            
+            if (firstIndex !== -1) {
+                cat.blocks.splice(firstIndex, 0, newBlock);
+            } else {
+                cat.blocks.push(newBlock);
+            }
+
+            closeModal('editModal');
+            autoSchedule();
+        }
+
+        function deleteCurrentBlock() {
+            if(!currentEditBlock) return;
+            showConfirm("Elimina Fase", "Eliminare questa singola fase?", () => {
+                saveState();
+                currentEditBlock.cat.blocks = currentEditBlock.cat.blocks.filter(b => b.id !== currentEditBlock.blk.id);
+                closeModal('editModal'); autoSchedule();
+            });
+        }
+
+        // Bulk & Multiple Selection
+        function toggleSelection(id) { let cat = getCurrentDayData().categories.find(c => c.id === id); if(cat) cat.selected = !cat.selected; renderDay(); }
+        function setupMarqueeSelection() {
+            const area = document.getElementById('view-timeline'), marquee = document.getElementById('selection-marquee');
+            let isSel = false, sX, sY;
+            if(!area || !marquee) return;
+            
+            area.addEventListener('mousedown', e => {
+                if (currentViewMode !== 'timeline') return;
+                if (e.target.closest('.task-block') || e.target.closest('.cat-label') || e.target.closest('button') || e.target.closest('.timeline-header') || e.target.closest('.custom-cb')) return;
+                isSel = true; const r = area.getBoundingClientRect(); sX = e.clientX - r.left + area.scrollLeft; sY = e.clientY - r.top + area.scrollTop;
+                marquee.style.cssText = `left:${sX}px; top:${sY}px; width:0; height:0; display:block;`;
+                if(!e.shiftKey) { getCurrentDayData()?.categories.forEach(c => c.selected = false); renderDay(); }
+            });
+            window.addEventListener('mousemove', e => {
+                if (!isSel) return; const r = area.getBoundingClientRect();
+                let cX = e.clientX - r.left + area.scrollLeft, cY = e.clientY - r.top + area.scrollTop;
+                let l = Math.min(sX, cX), t = Math.min(sY, cY), w = Math.abs(cX - sX), h = Math.abs(cY - sY);
+                marquee.style.width = w + 'px'; marquee.style.height = h + 'px'; marquee.style.left = l + 'px'; marquee.style.top = t + 'px';
+                
+                const mR = marquee.getBoundingClientRect();
+                document.querySelectorAll('.timeline-row').forEach(row => {
+                    const rowR = row.getBoundingClientRect();
+                    const hit = !(mR.right < rowR.left || mR.left > rowR.right || mR.bottom < rowR.top || mR.top > rowR.bottom);
+                    const cat = getCurrentDayData()?.categories.find(c => c.id === row.getAttribute('data-cat-id'));
+                    if(cat) { if(hit) cat.selected = true; else if(!e.shiftKey) cat.selected = false; }
+                });
+                updateBulkActions();
+            });
+            window.addEventListener('mouseup', () => { if(isSel) { isSel = false; marquee.style.display='none'; renderDay(); } });
+        }
+        function updateBulkActions() {
+            const sel = getCurrentDayData()?.categories.filter(c => c.selected).length || 0;
+            const bc = document.getElementById('bulk-controls');
+            if(bc) { if(sel > 0) { bc.classList.remove('hidden'); document.getElementById('sel-count').innerText = sel; } else { bc.classList.add('hidden'); } }
+            document.querySelectorAll('.timeline-row').forEach(row => {
+                const cat = getCurrentDayData()?.categories.find(c => c.id === row.getAttribute('data-cat-id'));
+                if(cat && cat.selected) row.classList.add('selected'); else row.classList.remove('selected');
+                let cb = row.querySelector('.custom-cb'); if(cb && cat) cb.checked = cat.selected;
+            });
+        }
+        function copySelectedToClipboard() { let day = getCurrentDayData(); let selected = day.categories.filter(c => c.selected); if(selected.length === 0) return; internalClipboard = JSON.parse(JSON.stringify(selected)); customAlert(`Memoria aggiornata: ${selected.length} categorie copiate.`); renderTabs(); day.categories.forEach(c => c.selected = false); refreshCurrentView(); }
+        function pasteFromClipboard() { if(internalClipboard.length === 0) return; saveState(); let day = getCurrentDayData(); internalClipboard.forEach(cat => { let newCat = JSON.parse(JSON.stringify(cat)); newCat.id = generateId('cat'); newCat.selected = true; let activePS = (newCat.format === 'caf' || newCat.format.includes('squadre')) ? newCat.athletes : (newCat.poolSize || 7); newCat.blocks = generateBlocks(newCat.weapon, newCat.format, newCat.athletes, newCat.passCount, activePS, day.startTime, newCat.sector); day.categories.push(newCat); }); autoSchedule(); customAlert(`Incollate ${internalClipboard.length} categorie!`); }
+        function deleteSelectedCategories() { showConfirm("Elimina Selezionate", "Sei sicuro di voler eliminare le categorie selezionate?", () => { saveState(); let d = getCurrentDayData(); d.categories = d.categories.filter(c => !c.selected); refreshCurrentView(); }); }
+        function openBulkEditModal() { let sel = getCurrentDayData()?.categories.filter(c=>c.selected); if(!sel || sel.length===0) return; document.getElementById('bulkEditModal').classList.add('active'); }
+        function applyBulkEdit() {
+            saveState();
+            let s = document.getElementById('bulkSector')?.value, w = document.getElementById('bulkWeapon')?.value, f = document.getElementById('bulkFormat')?.value, ps = document.getElementById('bulkPoolSize')?.value, pause = document.getElementById('bulkPause')?.value, day = getCurrentDayData();
+            day.categories.forEach(cat => {
+                if(cat.selected) {
+                    if(s) { cat.sector = s; if(s === 'nv') cat.weapon = 'spada'; }
+                    if(w && cat.sector !== 'nv') cat.weapon = w;
+                    if(f) cat.format = f;
+                    if(ps) cat.poolSize = parseInt(ps);
+                    if(pause !== "") cat.pauseMins = parseInt(pause);
+                    let activePS = (cat.format === 'caf' || cat.format.includes('squadre')) ? cat.athletes : (cat.poolSize || 7);
+                    cat.blocks = generateBlocks(cat.weapon, cat.format, cat.athletes, cat.passCount, activePS, cat.blocks.length ? cat.blocks[0].startMins : day.startTime, cat.sector);
+                }
+            });
+            closeModal('bulkEditModal'); autoSchedule();
+        }
+
+        // --- DRAG & DROP FOR BOTH VIEWS ---
+        function setupDraggable() {
+            interact('.timeline-task-block').unset();
+            interact('.piste-task-block').unset();
+
+            if (currentViewMode === 'timeline') {
+                interact('.timeline-task-block').draggable({
+                    inertia: true, 
+                    startAxis: 'x', lockAxis: 'x',
+                    listeners: { 
+                        start: e => {
+                            e.target.classList.add('is-dragging');
+                        },
+                        move: e => { 
+                            let x = (parseFloat(e.target.getAttribute('data-x')) || 0) + e.dx; 
+                            e.target.style.transform = `translate(${x}px, 0px)`; 
+                            e.target.setAttribute('data-x', x); 
+
+                            let tooltip = document.getElementById('drag-tooltip');
+                            tooltip.classList.remove('hidden');
+                            tooltip.style.left = e.clientX + 'px';
+                            tooltip.style.top = (e.clientY - 30) + 'px';
+
+                            const containerRect = document.getElementById('timeline-body').getBoundingClientRect();
+                            const elRect = e.target.getBoundingClientRect();
+                            const dropX = elRect.left - containerRect.left;
+                            
+                            let day = getCurrentDayData();
+                            let bounds = calculateDayBounds(day);
+                            let targetMins = findTimeForPixel(dropX, bounds, day);
+                            tooltip.innerText = minsToTime(targetMins);
+                        },
+                        end: e => {
+                            e.target.classList.remove('is-dragging');
+                            document.getElementById('drag-tooltip').classList.add('hidden');
+                            
+                            const containerRect = document.getElementById('timeline-body').getBoundingClientRect();
+                            const elRect = e.target.getBoundingClientRect();
+                            const dropX = elRect.left - containerRect.left;
+                            
+                            e.target.style.transform = 'none'; 
+                            e.target.setAttribute('data-x', 0);
+                            
+                            let day = getCurrentDayData();
+                            let bounds = calculateDayBounds(day);
+                            let targetMins = findTimeForPixel(dropX, bounds, day);
+                            let origMins = parseInt(e.target.getAttribute('data-orig-mins'));
+                            
+                            let diffMins = targetMins - origMins;
+                            if (diffMins === 0) { renderDay(); return; }
+                            
+                            saveState();
+                            applyTimelineDrag(e.target, diffMins);
+                        }
+                    }
+                });
+            } else {
+                interact('.piste-task-block').draggable({
+                    inertia: true,
+                    listeners: { 
+                        start: e => {
+                            e.target.classList.add('is-dragging');
+                        },
+                        move: e => { 
+                            let x = (parseFloat(e.target.getAttribute('data-x')) || 0) + e.dx; 
+                            let y = (parseFloat(e.target.getAttribute('data-y')) || 0) + e.dy; 
+                            e.target.style.transform = `translate(${x}px, ${y}px)`; 
+                            e.target.setAttribute('data-x', x); 
+                            e.target.setAttribute('data-y', y); 
+
+                            let tooltip = document.getElementById('drag-tooltip');
+                            tooltip.classList.remove('hidden');
+                            tooltip.style.left = e.clientX + 'px';
+                            tooltip.style.top = (e.clientY - 30) + 'px';
+
+                            let day = getCurrentDayData();
+                            let layout = getPistesLayout(day);
+                            let bounds = calculateDayBounds(day);
+
+                            const containerRect = document.getElementById('view-pistes').querySelector('.relative.pistes-bg-grid').getBoundingClientRect();
+                            const elRect = e.target.getBoundingClientRect();
+                            const dropX = elRect.left - containerRect.left;
+                            const dropY = elRect.top - containerRect.top;
+
+                            let targetPiste = Math.max(0, Math.min(layout.length - 1, Math.floor(dropX / 40)));
+                            let targetMins = findTimeForPixel(dropY, bounds, day);
+
+                            let pisteName = layout[targetPiste].isSpecial ? layout[targetPiste].name.substring(0,3).toUpperCase() : layout[targetPiste].name;
+                            tooltip.innerText = `P.${pisteName} - ${minsToTime(targetMins)}`;
+
+                            let colHighlight = document.getElementById('piste-highlight-col');
+                            let rowHighlight = document.getElementById('piste-highlight-row');
+                            if(colHighlight && rowHighlight) {
+                                let blockPistes = parseInt(e.target.style.width) / 40 || 1;
+                                colHighlight.style.display = 'block';
+                                colHighlight.style.left = (targetPiste * 40) + 'px';
+                                colHighlight.style.width = (blockPistes * 40) + 'px';
+
+                                rowHighlight.style.display = 'block';
+                                rowHighlight.style.top = getColOffset(day, targetMins, bounds) + 'px';
+                                let origDuration = parseInt(e.target.style.height) || 40; 
+                                rowHighlight.style.height = origDuration + 'px';
+                            }
+                        },
+                        end: e => {
+                            e.target.classList.remove('is-dragging');
+                            document.getElementById('drag-tooltip').classList.add('hidden');
+                            let colHighlight = document.getElementById('piste-highlight-col');
+                            let rowHighlight = document.getElementById('piste-highlight-row');
+                            if(colHighlight) colHighlight.style.display = 'none';
+                            if(rowHighlight) rowHighlight.style.display = 'none';
+
+                            const containerRect = document.getElementById('view-pistes').querySelector('.relative.pistes-bg-grid').getBoundingClientRect();
+                            const elRect = e.target.getBoundingClientRect();
+                            const dropX = elRect.left - containerRect.left;
+                            const dropY = elRect.top - containerRect.top;
+                            
+                            e.target.style.transform = 'none'; e.target.setAttribute('data-x', 0); e.target.setAttribute('data-y', 0);
+                            
+                            let day = getCurrentDayData();
+                            let bounds = calculateDayBounds(day);
+                            let layout = getPistesLayout(day);
+
+                            let targetPiste = Math.max(0, Math.min(layout.length - 1, Math.floor(dropX / 40)));
+                            let origPiste = parseInt(e.target.getAttribute('data-orig-piste'));
+                            let diffPistes = targetPiste - origPiste;
+
+                            let origMins = parseInt(e.target.getAttribute('data-orig-mins'));
+                            let targetMins = findTimeForPixel(dropY, bounds, day);
+                            let diffMins = targetMins - origMins;
+
+                            if (diffPistes === 0 && diffMins === 0) { renderPistesView(); return; }
+                            
+                            saveState();
+                            let catId = e.target.getAttribute('data-cat-id');
+                            let blkId = e.target.getAttribute('data-block-id');
+                            applyPistesDrag(catId, blkId, diffPistes, diffMins);
+                        }
+                    }
+                });
+            }
+        }
+
+        function applyTimelineDrag(element, diffMins) {
+            const day = getCurrentDayData(); const dCat = day.categories.find(c => c.id === element.getAttribute('data-cat-id'));
+            dCat.blocks.sort((a,b) => a.startMins - b.startMins); const dBlkIdx = dCat.blocks.findIndex(b => b.id === element.id);
+            const targets = dCat.selected ? day.categories.filter(c => c.selected) : [dCat];
+            
+            targets.forEach(cat => {
+                for(let i = dBlkIdx; i < cat.blocks.length; i++) {
+                    let b = cat.blocks[i];
+                    let minAllowed = day.startTime;
+                    
+                    if (i > 0) {
+                        let prevB = cat.blocks[i-1];
+                        if (!b.splitGroupId || b.splitGroupId !== prevB.splitGroupId) {
+                            minAllowed = prevB.startMins + prevB.duration + (cat.pauseMins || 0);
+                        } else {
+                            let firstGrp = cat.blocks.find(bx => bx.splitGroupId === b.splitGroupId);
+                            minAllowed = firstGrp.startMins;
+                        }
+                    }
+                    
+                    let maxAllowed = 1440 - b.duration;
+                    b.startMins = Math.max(minAllowed, Math.min(maxAllowed, b.startMins + diffMins));
+                    b.manualOverride = true; 
+                }
+            });
+            resolveOverlapsAndChronology();
+            autoSchedule(); 
+        }
+
+        function applyPistesDrag(catId, blkId, diffPistes, diffMins) {
+            let day = getCurrentDayData();
+            let cat = day.categories.find(c => c.id === catId);
+            let blk = cat.blocks.find(b => b.id === blkId);
+            let dBlkIdx = cat.blocks.findIndex(b => b.id === blkId);
+
+            let newPiste = Math.max(0, (blk.startPiste || 0) + diffPistes);
+            
+            let layout = getPistesLayout(day);
+            const totalPistes = layout.length;
+            newPiste = Math.min(newPiste, totalPistes - blk.pistes);
+
+            let newMins = Math.max(day.startTime, blk.startMins + diffMins);
+            newMins = Math.min(newMins, 1440 - blk.duration);
+
+            if (dBlkIdx > 0) {
+                let prevB = cat.blocks[dBlkIdx - 1];
+                if (!blk.splitGroupId || blk.splitGroupId !== prevB.splitGroupId) {
+                    newMins = Math.max(newMins, prevB.startMins + prevB.duration + (cat.pauseMins || 0));
+                }
+            }
+
+            blk.startPiste = newPiste;
+            blk.startMins = newMins;
+            blk.manualOverride = true; 
+
+            resolveOverlapsAndChronology();
+            autoSchedule(); 
+        }
+
+        function handleRowDragStart(e) { draggedRowIndex = parseInt(this.dataset.index); e.dataTransfer.effectAllowed = 'move'; }
+        function handleRowDragOver(e) { e.preventDefault(); this.classList.add('drag-over'); return false; }
+        function handleRowDragLeave(e) { this.classList.remove('drag-over'); }
+        function handleRowDrop(e) { e.stopPropagation(); this.classList.remove('drag-over'); let tIdx = parseInt(this.dataset.index); if (draggedRowIndex === tIdx || draggedRowIndex === null) return; saveState(); let cats = getCurrentDayData().categories; cats.splice(tIdx, 0, cats.splice(draggedRowIndex, 1)[0]); draggedRowIndex = null; renderDay(); }
+
+        // --- PASTE PARSER ---
+        function parsePastedText(text) {
+            let results = [], lines = Array.isArray(text) ? text : text.split('\n');
+            let currentCat = { time: null, name: "", athletes: 0 };
+            for (let i = 0; i < lines.length; i++) {
+                let cleanLine = lines[i].replace(/\t/g, ' ').replace(/\s+/g, ' ').trim(); if (cleanLine === '') continue;
+                let timeMatch = cleanLine.match(/(?:^|\s)(\d{1,2})[:.](\d{2})(?:\s|$)/);
+                if (timeMatch) {
+                    if (currentCat.name !== "" && currentCat.athletes > 0) { results.push({...currentCat}); currentCat = { time: null, name: "", athletes: 0 }; }
+                    currentCat.time = `${timeMatch[1].padStart(2,'0')}:${timeMatch[2]}`; cleanLine = cleanLine.replace(timeMatch[0], ' ').replace(/\s+/g, ' ').trim();
+                }
+                if (cleanLine === '') continue;
+                if (/^\d+$/.test(cleanLine)) {
+                    currentCat.athletes = parseInt(cleanLine, 10);
+                    if (currentCat.name !== "") { results.push({...currentCat}); currentCat = { time: null, name: "", athletes: 0 }; }
+                    continue;
+                }
+                let matchEndingNumber = cleanLine.match(/^(.*?)\s+(\d+)$/);
+                if (matchEndingNumber && isNaN(cleanLine)) {
+                    currentCat.name += (currentCat.name ? " " : "") + matchEndingNumber[1].trim(); currentCat.athletes = parseInt(matchEndingNumber[2], 10);
+                    results.push({...currentCat}); currentCat = { time: null, name: "", athletes: 0 }; continue;
+                }
+                currentCat.name += (currentCat.name ? " " : "") + cleanLine;
+            }
+            if (currentCat.name !== "" && currentCat.athletes > 0) results.push({...currentCat});
+            return results;
+        }
+
+        document.addEventListener('paste', e => { if (['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)) return; let data = e.clipboardData.getData('text'); openPastePreview(data); });
+        function openPastePreview(text) { if(document.getElementById('pasteRawText')) document.getElementById('pasteRawText').value = text; updatePastePreview(); document.getElementById('pastePreviewModal').classList.add('active'); }
+        function updatePastePreview() {
+            let text = document.getElementById('pasteRawText')?.value || ""; let parsed = parsePastedText(text); globalParsedPasteData = parsed;
+            let listDiv = document.getElementById('pasteRecognizedList'), errorMsg = document.getElementById('pasteErrorMsg'), btnConfirm = document.getElementById('btnConfirmPaste');
+            if(!listDiv || !errorMsg || !btnConfirm) return;
+            listDiv.innerHTML = '';
+            if (parsed.length === 0) {
+                errorMsg.classList.remove('hidden'); btnConfirm.disabled = true; btnConfirm.classList.add('opacity-50', 'cursor-not-allowed');
+                listDiv.innerHTML = '<p class="text-gray-400 italic text-center mt-4">In attesa di dati validi...</p>';
+            } else {
+                errorMsg.classList.add('hidden'); btnConfirm.disabled = false; btnConfirm.classList.remove('opacity-50', 'cursor-not-allowed');
+                parsed.forEach(cat => {
+                    let div = document.createElement('div'); div.className = 'bg-white border rounded p-2 mb-2 shadow-sm';
+                    div.innerHTML = `<div class="font-bold text-blue-900">${cat.name}</div><div class="flex justify-between text-[10px] text-gray-600 mt-1 font-bold"><span><i class="fa-solid fa-users"></i> ${cat.athletes} Iscritti</span><span><i class="fa-regular fa-clock"></i> ${cat.time ? cat.time : 'Orario Base'}</span></div>`;
+                    listDiv.appendChild(div);
+                });
+            }
+        }
+
+        function confirmPastePreview() {
+            closeModal('pastePreviewModal'); let day = getCurrentDayData();
+            if(day && day.categories.length === 0) { 
+                if (globalParsedPasteData.length > 0 && globalParsedPasteData[0].time) { if (document.getElementById('prompt-time-input')) document.getElementById('prompt-time-input').value = globalParsedPasteData[0].time.padStart(5, '0'); } else { if (document.getElementById('prompt-time-input')) document.getElementById('prompt-time-input').value = minsToTime(day.startTime); }
+                pendingPasteData = globalParsedPasteData; document.getElementById('startTimePromptModal').classList.add('active'); 
+            } else { executePasteInsertion(globalParsedPasteData); }
+        }
+        function confirmStartTimePrompt() {
+            let t = document.getElementById('prompt-time-input')?.value || "08:30", [h,m] = t.split(':'); let day = getCurrentDayData();
+            if (day) day.startTime = parseInt(h)*60 + parseInt(m); if (document.getElementById('day-start-time')) document.getElementById('day-start-time').value = t;
+            closeModal('startTimePromptModal'); if(pendingPasteData) { executePasteInsertion(pendingPasteData); pendingPasteData=null; } else { refreshCurrentView(); }
+        }
+
+        function executePasteInsertion(parsedData) {
+            const day = getCurrentDayData(); if(!day) return; let count = 0;
+            saveState();
+            try {
+                parsedData.forEach(item => {
+                    let name = item.name, atl = item.athletes;
+                    if(atl > 0 && name.length > 0) {
+                        let weapon = 'spada', ln = name.toLowerCase();
+                        if(ln.includes('fioretto')) weapon = 'fioretto'; else if(ln.includes('sciabola')) weapon = 'sciabola';
+                        let format = 'girone_diretta', sector = 'olimpico';
+                        if (ln.includes('carrozzin') || ln.includes('paralimpic')) sector = 'car'; else if (ln.includes('non vedent') || ln.includes('ciech')) { sector = 'nv'; weapon = 'spada'; }
+                        if(ln.includes('squadre')) { if(ln.includes('36') || ln.match(/maschiett|giovanissim|ragazz|alliev|bambin/)) format = 'squadre_36'; else format = 'squadre_45'; }
+                        else if(ln.includes('caf')) format = 'caf'; else if(ln.includes('plastica') || ln.includes('festa') || ln.includes('prime lame') || ln.includes('esordienti')) format = 'festa_scherma';
+                        let refStart = day.startTime; if(item.time) { let [h, m] = item.time.split(':'); refStart = parseInt(h)*60 + parseInt(m); }
+                        let passCount = format === 'caf' ? 0 : atl, pS = (format === 'caf' || format.includes('squadre')) ? atl : 7;
+                        day.categories.push({ id:generateId('cat'), name, weapon, athletes:atl, passCount:passCount, poolSize:pS, format, sector, pauseMins:0, selected:false, blocks:generateBlocks(weapon,format,atl,passCount,pS,refStart,sector) });
+                        count++;
+                    }
+                });
+                if(count>0) autoSchedule(); else { refreshCurrentView(); }
+                customAlert(`Importate ${count} categorie!`);
+            } catch (e) { customAlert("Errore importazione."); }
+        }
+
+        // --- EXPORT & IMPORT (XML, Excel, PDF) ---
+        function downloadFile(content, fileName, mimeType) {
+            const a = document.createElement("a"); const file = new Blob([content], { type: mimeType });
+            a.href = URL.createObjectURL(file); a.download = fileName; a.click(); URL.revokeObjectURL(a.href);
+        }
+
+        function openExportModal(type) {
+            exportTypePending = type; let dayName = getCurrentDayData()?.title || 'Giorno';
+            document.getElementById('exportFileName').value = `${globalTournamentName}_${dayName}`;
+            document.getElementById('exportModal').classList.add('active');
+        }
+
+        function confirmExport() {
+            let fname = document.getElementById('exportFileName').value || 'Gara'; closeModal('exportModal');
+            if (exportTypePending === 'xml') exportXML(fname);
+            else if (exportTypePending === 'pdf') exportPDF(fname);
+            else if (exportTypePending === 'excel') exportExcel(fname);
+        }
+
+        function exportXML(fname) {
+            let json = JSON.stringify({ v: 16, tournamentName: globalTournamentName, timeStep: timeStep, days: database });
+            let xml = `<?xml version="1.0" encoding="UTF-8"?><SchermaPlanner><Data><![CDATA[${json}]]></Data></SchermaPlanner>`;
+            downloadFile(xml, fname + '.xml', 'application/xml');
+        }
+
+        function exportExcel(fname) {
+            let day = getCurrentDayData(); if(!day) return;
+            let bounds = calculateDayBounds(day); let wb = XLSX.utils.book_new();
+            let wsData = [["Categoria", "Iscritti", "Arma", "Settore", "Format"]];
+            let headerTime = ["","","","",""];
+            for(let m = bounds.start; m < bounds.end; m+=timeStep) headerTime.push(minsToTime(m));
+            wsData.push(headerTime);
+
+            day.categories.forEach(cat => {
+                let row = [cat.name, cat.athletes||0, cat.weapon, cat.sector, cat.format];
+                let catSlots = new Array(Math.ceil((bounds.end - bounds.start)/timeStep)).fill('');
+                cat.blocks.forEach(b => {
+                    let startIdx = Math.floor((b.startMins - bounds.start)/timeStep); let durationSlots = Math.ceil(b.duration/timeStep);
+                    for(let i=0; i<durationSlots; i++) if(startIdx+i < catSlots.length) catSlots[startIdx+i] = `${b.name} (${b.pistes}P)`;
+                });
+                wsData.push(row.concat(catSlots));
+            });
+            let ws = XLSX.utils.aoa_to_sheet(wsData); XLSX.utils.book_append_sheet(wb, ws, "Timeline");
+            XLSX.writeFile(wb, fname + '.xlsx');
+        }
+
+        function exportPDF(fname) {
+            const area = currentViewMode === 'timeline' ? document.getElementById('view-timeline') : document.getElementById('view-pistes');
+            if(!area) return;
+            
+            let btn = document.getElementById('btn-pdf'); let oldText = btn.innerHTML; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+            
+            let originalW = area.style.width, originalH = area.style.height, originalOver = area.style.overflow;
+            let day = getCurrentDayData(); let bounds = calculateDayBounds(day); let slots = Math.ceil((bounds.end - bounds.start) / timeStep);
+            
+            if (currentViewMode === 'timeline') {
+                let totalW = 260 + (slots * 40);
+                area.style.width = totalW + "px"; area.style.height = "auto"; area.style.overflow = "visible";
+            }
+            
+            html2canvas(area, { scale: 1.5, useCORS: true }).then(canvas => {
+                const imgData = canvas.toDataURL('image/jpeg', 0.95);
+                const pdf = new window.jspdf.jsPDF('l', 'mm', 'a4');
+                const pW = pdf.internal.pageSize.getWidth(), pH = pdf.internal.pageSize.getHeight();
+                const iW = pW, iH = (canvas.height * pW) / canvas.width;
+                pdf.addImage(imgData, 'JPEG', 0, 0, iW, Math.min(pH, iH));
+                pdf.save(fname + '.pdf');
+                area.style.width = originalW; area.style.height = originalH; area.style.overflow = originalOver; btn.innerHTML = oldText;
+            });
+        }
+
+        function loadXML(event) {
+            let file = event.target.files[0]; if(!file) return;
+            let reader = new FileReader();
+            reader.onload = function(e) {
+                let xmlStr = e.target.result; let match = xmlStr.match(/<Data><!\[CDATA\[(.*?)\]\]><\/Data>/s);
+                if(match && match[1]) {
+                    try { pendingXMLData = JSON.parse(match[1]); document.getElementById('importChoiceModal').classList.add('active'); } 
+                    catch(err) { customAlert("Errore lettura dati JSON dal CDATA."); }
+                } else { customAlert("Formato XML non valido per SchermaPlanner."); }
+            };
+            reader.readAsText(file); event.target.value = "";
+        }
+
+        function executeXMLImport(mode) {
+            if(!pendingXMLData) return;
+            saveState();
+            let d = pendingXMLData; let sourceDays = d.days ? d.days : (Array.isArray(d) ? d : []);
+            try {
+                if (mode === 'replace') {
+                    if(d.tournamentName) { globalTournamentName = d.tournamentName; if (document.getElementById('tournament-name')) document.getElementById('tournament-name').value = globalTournamentName; }
+                    if(d.timeStep) { timeStep = d.timeStep; if(document.getElementById('timeStepSelect')) document.getElementById('timeStepSelect').value = timeStep; }
+                    if(d.days && d.days.length > 0) {
+                        database = d.days;
+                        database.forEach(day => {
+                            if(!day.hiddenCols) day.hiddenCols = [];
+                            if(day.maxPistes === undefined) day.maxPistes = d.maxP || 10;
+                            if(day.maxPistesNV === undefined) day.maxPistesNV = 0;
+                            if(day.maxPistesCar === undefined) day.maxPistesCar = 0;
+                            if(day.refs === undefined) day.refs = d.refs || {spada:10, fioretto:10, sciabola:10, nv:2, car:2};
+                            day.categories.forEach(cat => { if(!cat.sector) cat.sector = 'olimpico'; });
+                        });
+                    } else {
+                        database = sourceDays.length > 0 ? sourceDays : [{ id:'day_1', title:'Sabato', date:getNextSaturday(), startTime:510, maxPistes: 10, maxPistesNV: 0, maxPistesCar: 0, refs: {spada: 10, fioretto: 10, sciabola: 10, nv: 2, car: 2}, categories:[] }];
+                        database.forEach(x => { if(!x.startTime) x.startTime = 510; });
+                    }
+                    if (database.length > 0) currentDayId = database[0].id;
+                    persistData(); initApp(); customAlert("Progetto sostituito con successo!");
+                } 
+                else if (mode === 'merge_current') {
+                    let currentDay = getCurrentDayData(); if(!currentDay) return;
+                    let catsToAdd = [];
+                    sourceDays.forEach(day => {
+                        if (day.categories) {
+                            day.categories.forEach(cat => {
+                                let newCat = JSON.parse(JSON.stringify(cat));
+                                newCat.id = generateId('cat'); newCat.selected = false;
+                                let activePS = (newCat.format === 'caf' || newCat.format?.includes('squadre')) ? newCat.athletes : (newCat.poolSize || 7);
+                                newCat.blocks = generateBlocks(newCat.weapon, newCat.format, newCat.athletes, newCat.passCount, activePS, currentDay.startTime, newCat.sector || 'olimpico');
+                                catsToAdd.push(newCat);
+                            });
+                        }
+                    });
+                    currentDay.categories.push(...catsToAdd); persistData(); initApp(); autoSchedule(); customAlert(`Aggiunte ${catsToAdd.length} categorie!`);
+                }
+                else if (mode === 'add_days') {
+                    sourceDays.forEach(day => {
+                        let newDay = JSON.parse(JSON.stringify(day)); newDay.id = generateId('day');
+                        if(!newDay.hiddenCols) newDay.hiddenCols = [];
+                        if (newDay.categories) newDay.categories.forEach(cat => { cat.id = generateId('cat'); cat.selected = false; if (cat.blocks) cat.blocks.forEach(b => { b.id = generateId('b'); }); });
+                        database.push(newDay);
+                    });
+                    persistData(); initApp(); customAlert(`Aggiunte ${sourceDays.length} nuove giornate!`);
+                }
+            } catch (e) { console.error("Error importing XML:", e); customAlert("Errore durante l'importazione XML."); }
+            closeModal('importChoiceModal'); pendingXMLData = null;
+        }
+
+        // --- INIT ---
+        function initApp() { loadPersistedData(); renderTabs(); refreshCurrentView(); setupMarqueeSelection(); }
+        window.onload = initApp;
+    </script>
+</body>
+</html>
